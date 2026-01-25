@@ -1,6 +1,58 @@
 import graphviz
+import matplotlib.pyplot as plt
 import pygame
+import neat
+import gymnasium as gym
+import time
 
+"""
+Description: Preview the best brain found in a generation
+
+Parameters
+----------
+winner : neat.DefaultGenome
+    The winner genome
+config : neat.config.Config
+    The configuration file
+"""
+def preview_winner(winner, config):
+    # Create a visual environment for the winner's victory lap
+    visual_env = gym.make("LunarLander-v3", render_mode="human")
+    net = neat.nn.FeedForwardNetwork.create(winner, config)
+    
+    # Reset the environment
+    observation, info = visual_env.reset()
+    screen = pygame.display.set_mode((1000, 600))
+    fuel_spent = 0.0
+    total_reward = 0.0
+    
+    for step in range(1000):
+        visual_env.render()  # Render the environment
+        outputs = net.activate(observation)
+        action = outputs.index(max(outputs)) # choose the highest signal
+        
+        if action == 2: # Main engine
+            fuel_spent += 0.3
+        elif action in [1, 3]: # Side engines
+            fuel_spent += 0.03
+             
+        observation, reward, terminated, truncated, info = visual_env.step(action)
+        total_reward += reward
+        
+        pygame.draw.rect(screen, (30, 30, 30), (600, 0, 400, 600))
+        pygame.draw.line(screen, (200, 200, 200), (600, 0), (600, 600), 3)
+        draw_hud(visual_env, reward, observation, step, fuel_spent=fuel_spent) # Draw the HUD
+        draw_realtime_brain( winner, config, observation) # Draw the brain activity
+        pygame.display.flip() # refresh the screen
+        
+        if terminated or truncated:
+            time.sleep(2)
+            break
+
+    visual_env.close()
+    print("Preview complete")
+    #input("Press Enter to continue...")
+    
 """
 Description: Draw the neural network of the best pilot
 
@@ -18,22 +70,112 @@ filename : str, optional
 def draw_net(config, genome, view=False, filename="best_pilot_brain"):
     dot = graphviz.Digraph(format='png', engine='dot')
     
-    # Define Nodes
+    dot.attr(bgcolor='#2E2E2E')  # Dark background
+    dot.attr('node', fontname='Helvetica', fontsize='10', fontcolor='white', style='filled', fillcolor='#4B4B4B', color='#4B4B4B')
+    
+    # Define Input Nodes (Sensors)
     for node_id in config.genome_config.input_keys:
-        dot.node(str(node_id), shape='box', color='lightblue', style='filled')
+        dot.node(str(node_id), label=f"Sensor {node_id}", shape='hexagon', color='white', style='filled', fillcolor='#4A90E2')
+    
+    # Define Output Nodes (Engines)
     for node_id in config.genome_config.output_keys:
-        dot.node(str(node_id), shape='circle', color='lightgreen', style='filled')
+        dot.node(str(node_id), label=f"Engine {node_id}", shape='circle', color='white', style='filled', fillcolor='#50E3C2')
     
     # Define Connections
     for cg in genome.connections.values():
         if cg.enabled:
             input_node, output_node = cg.key
-            weight = f"{cg.weight:.2f}"
-            color = 'green' if cg.weight > 0 else 'red'
-            dot.edge(str(input_node), str(output_node), label=weight, color=color)
+            width = str(0.5 + abs(cg.weight) * 0.8)  # Scale width for visibility
+            color = '#7ED321' if cg.weight > 0 else '#D0021B'  # Green for positive, red for negative
+            dot.edge(str(input_node), str(output_node), penwidth=width, arrowhead='none', color=color)
             
     dot.render(filename, view=view, cleanup=True)
 
+"""
+Description: Visualize the real-time brain activity of the pilot
+
+Parameters
+----------
+env : gymnasium.core.Env
+    The environment
+genome : neat.DefaultGenome
+    The genome of the best pilot
+config : neat.config.Config
+    The configuration file
+current_observations : list
+    The current observations of the lander
+"""
+def draw_realtime_brain(genome, config, current_observations):
+    canvas = pygame.display.get_surface()
+    if canvas is None: return # Safety check
+    
+    # Define the area for the brain (Top-right corner)
+    start_x, start_y = 650, 150
+    layer_width = 200
+    node_spacing = 40
+    
+    # 1. Map coordinates for Nodes
+    # Map Input Nodes
+    input_coords = {key: (start_x, start_y + (i * node_spacing)) 
+                    for i, key in enumerate(config.genome_config.input_keys)}
+    # Map Output Nodes
+    output_coords = {key: (start_x + layer_width, start_y + (i * (node_spacing * 2))) 
+                     for i, key in enumerate(config.genome_config.output_keys)}
+
+    # Map Hidden Nodes
+    hidden_nodes = [n for n in genome.nodes.keys() if n not in config.genome_config.output_keys]
+    hidden_coords = {}
+    for i, node_id in enumerate(hidden_nodes):
+        # Place them in the middle (x) and spread them out (y)
+        hidden_coords[node_id] = (start_x + (layer_width // 2), start_y + (i * 50))
+
+    # Draw all node circles (Inputs, Outputs, and Hidden)
+    for coords in input_coords.values(): pygame.draw.circle(canvas, (100, 100, 255), coords, 10)
+    for coords in output_coords.values(): pygame.draw.circle(canvas, (255, 100, 100), coords, 10)
+    for coords in hidden_coords.values(): pygame.draw.circle(canvas, (200, 200, 200), coords, 8)
+
+    # 2. Draw Connections
+    all_coords = {**input_coords, **output_coords, **hidden_coords}
+            
+    # 2. Draw Connections
+    for conn in genome.connections.values():
+        if not conn.enabled: continue
+        in_node, out_node = conn.key
+        
+        # Now check if BOTH ends of the connection exist in the big map
+        if in_node in all_coords and out_node in all_coords:
+            p1 = all_coords[in_node]
+            p2 = all_coords[out_node]
+            
+            color = (0, 255, 0) if conn.weight > 0 else (255, 0, 0)
+            thickness = max(1, int(abs(conn.weight) * 2))
+            pygame.draw.line(canvas, color, p1, p2, thickness)
+            
+"""
+Description: Plot the fitness statistics over generations
+
+Parameters
+----------
+statistics : neat.StatisticsReporter
+    The statistics reporter from the NEAT simulation
+"""
+def plot_stats(statistics, filename="fitness_over_time.png"):
+    generation = range(len(statistics.most_fit_genomes))
+    best_fitness = [c.fitness for c in statistics.most_fit_genomes]
+    avg_fitness = statistics.get_fitness_mean()
+    
+    plt.style.use('dark_background') 
+    plt.figure(figsize=(10, 5))
+    plt.plot(generation, best_fitness, label='Best Pilot', color='#50E3C2', linewidth=2)
+    plt.plot(generation, avg_fitness, label='Average Population', color='#4A90E2', linestyle='--')
+    
+    plt.title('Pilot Intelligence Evolution')
+    plt.xlabel('Generation')
+    plt.ylabel('Fitness (Score)')
+    plt.legend()
+    plt.grid(alpha=0.2)
+    plt.savefig('evolution_graph.png')
+    plt.show()
 
 """
 Description: Draw a heads-up display (HUD) on the Lunar Lander screen
@@ -53,7 +195,7 @@ fuel_spent : float
 wind_force : float, optional
     The current wind force, by default 0.0
 """
-def draw_hud(env, total_reward, observation, step, fuel_spent, wind_force=0.0):
+def draw_hud(env, total_reward, observation, step, fuel_spent, wind_force=0.0, gen_label="Unknown Gen"):
     # Access the pygame surface from the Gymnasium environment
     canvas = env.unwrapped.screen
     if canvas is None: return # Safety check
@@ -64,6 +206,7 @@ def draw_hud(env, total_reward, observation, step, fuel_spent, wind_force=0.0):
     
     # The data strings
     stats = [
+        f"GENERATION: {gen_label}",
         f"Step: {step}",
         f"Score: {total_reward:.2f}",
         f"V-Speed: {observation[3]:.2f}",
