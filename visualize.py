@@ -4,6 +4,7 @@ import pygame
 import neat
 import gymnasium as gym
 import time
+import glob
 
 """
 Description: Preview the best brain found in a generation
@@ -271,3 +272,32 @@ def draw_hud(env, total_reward, observation, step, fuel_spent, wind_force=0.0, g
             
         text_surface = font.render(text, True, color)
         canvas.blit(text_surface, (20, 20 + i * 20))
+
+def visualize_checkpoint_brain(checkpoint_path, config_path):
+    # 1. Load the checkpoint
+    p = neat.Checkpointer.restore_checkpoint(checkpoint_path)
+    
+    # 2. Get the best genome from that checkpoint
+    # You can also use p.population.values() to iterate through EVERY brain
+    best_genome = p.best_genome
+    
+    # 3. Load the config (required for the drawing logic)
+    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                         config_path)
+
+    # 4. Draw the brain
+    # This uses your visualize.py logic
+    draw_net(config, best_genome, False, filename=f"brain_from_{checkpoint_path}")
+    print(f"Brain diagram saved for {checkpoint_path}")
+    
+
+def generate_evolution_gallery(config_path):
+    checkpoints = glob.glob("checkpoints/neat-checkpoint-*")
+    for cp in checkpoints:
+        # Extract the generation number for the filename
+        gen = cp.split('-')[-1]
+        p = neat.Checkpointer.restore_checkpoint(cp)
+        
+        # Draw the best brain of that generation
+        draw_net(p.config, p.best_genome, False, filename=f"brains/brain_gen_{gen}")

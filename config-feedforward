@@ -1,7 +1,7 @@
 [NEAT]
 fitness_criterion     = max
-fitness_threshold     = 200
-pop_size              = 150
+fitness_threshold     = 350
+pop_size              = 200
 reset_on_extinction   = False
 no_fitness_termination = False
 
@@ -67,7 +67,7 @@ weight_init_stdev       = 1.0
 weight_init_type        = gaussian
 weight_max_value        = 30
 weight_min_value        = -30
-weight_mutate_power     = 0.2
+weight_mutate_power     = 0.1
 weight_mutate_rate      = 0.8
 weight_replace_rate     = 0.2
 
@@ -76,14 +76,14 @@ single_structural_mutation = false
 structural_mutation_surer  = default
 
 [DefaultSpeciesSet]
-compatibility_threshold = 2.5
+compatibility_threshold = 2.0
 
 [DefaultStagnation]
 species_fitness_func = max
-max_stagnation       = 20
+max_stagnation       = 50
 species_elitism      = 2
 
 [DefaultReproduction]
 elitism            = 10
-survival_threshold = 0.2
+survival_threshold = 0.3
 min_species_size   = 2
