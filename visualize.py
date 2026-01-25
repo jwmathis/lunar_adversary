@@ -109,10 +109,16 @@ def draw_realtime_brain(genome, config, current_observations):
     canvas = pygame.display.get_surface()
     if canvas is None: return # Safety check
     
+    font = pygame.font.SysFont('Arial', 14, bold=True)
+    
+    # Label Lists
+    input_labels = ["Pos X", "Pos Y", "H-Vel", "V-Vel", "Angle", "Ang-Vel", "L-Leg", "R-Leg"]
+    output_labels = ["Idle", "Left", "Main", "Right"]
+    
     # Define the area for the brain (Top-right corner)
-    start_x, start_y = 650, 150
-    layer_width = 200
-    node_spacing = 40
+    start_x, start_y = 720, 150
+    layer_width = 180
+    node_spacing = 45
     
     # 1. Map coordinates for Nodes
     # Map Input Nodes
@@ -129,11 +135,43 @@ def draw_realtime_brain(genome, config, current_observations):
         # Place them in the middle (x) and spread them out (y)
         hidden_coords[node_id] = (start_x + (layer_width // 2), start_y + (i * 50))
 
-    # Draw all node circles (Inputs, Outputs, and Hidden)
-    for coords in input_coords.values(): pygame.draw.circle(canvas, (100, 100, 255), coords, 10)
-    for coords in output_coords.values(): pygame.draw.circle(canvas, (255, 100, 100), coords, 10)
-    for coords in hidden_coords.values(): pygame.draw.circle(canvas, (200, 200, 200), coords, 8)
+    for i, node_id in enumerate(hidden_nodes):
+        hidden_coords[node_id] = (start_x + (layer_width // 2), start_y + (i * 50))
 
+    # 2. Draw Connections FIRST (so they stay behind the nodes)
+    all_coords = {**input_coords, **output_coords, **hidden_coords}
+    for conn in genome.connections.values():
+        if not conn.enabled: continue
+        in_node, out_node = conn.key
+        if in_node in all_coords and out_node in all_coords:
+            p1 = all_coords[in_node]
+            p2 = all_coords[out_node]
+            color = (0, 255, 0) if conn.weight > 0 else (255, 0, 0)
+            thickness = max(1, int(abs(conn.weight) * 2))
+            pygame.draw.line(canvas, color, p1, p2, thickness)
+
+    # 3. Draw Nodes and Dynamic Labels
+    # Inputs
+    for i, (key, coords) in enumerate(input_coords.items()):
+        val = abs(current_observations[i])
+        # Glow text and node if sensor is active
+        color = (255, 255, 255) if val > 0.1 else (100, 100, 100)
+        node_color = (100, 100, 255) if val > 0.1 else (50, 50, 150)
+        
+        label_surf = font.render(input_labels[i], True, color)
+        canvas.blit(label_surf, (coords[0] - 75, coords[1] - 7)) # Label to the left
+        pygame.draw.circle(canvas, node_color, coords, 10)
+
+    # Outputs
+    for i, (key, coords) in enumerate(output_coords.items()):
+        label_surf = font.render(output_labels[i], True, (200, 200, 200))
+        canvas.blit(label_surf, (coords[0] + 20, coords[1] - 7)) # Label to the right
+        pygame.draw.circle(canvas, (255, 100, 100), coords, 10)
+
+    # Hidden Nodes (No labels needed for these usually)
+    for coords in hidden_coords.values():
+        pygame.draw.circle(canvas, (180, 180, 180), coords, 8)
+        
     # 2. Draw Connections
     all_coords = {**input_coords, **output_coords, **hidden_coords}
             

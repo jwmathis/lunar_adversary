@@ -136,7 +136,7 @@ def test_best_pilot(config_path, genome_path):
             
         print("Flight finished. Resetting in 2 seconds...")
         import time
-        time.sleep(2) # Pause so you can see the final position
+        time.sleep(2) # Pause to see the final position
 
 def test_evolution_history(config_path, snapshot_folder):
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
@@ -194,7 +194,8 @@ def test_evolution_history(config_path, snapshot_folder):
             pygame.display.flip()
 
         #print(f"Gen {gen_label} flight finished. Next pilot in 2 seconds...")
-        #time.sleep(2)
+        #time.sleep(5)
+        input("Press Enter to continue...")
 
     env.close()
     print("Evolution Tour Complete!")
