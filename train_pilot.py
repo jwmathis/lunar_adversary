@@ -8,7 +8,7 @@ import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
+import random
 # Create folders if they don't exist
 for folder in ['checkpoints', 'evolution_snapshots', 'evolution_plots']:
     if not os.path.exists(folder):
@@ -24,15 +24,17 @@ genomes : list
 config : neat.config.Config
     The configuration file
 """
+
 def eval_genomes(genomes, config):
     env = gym.make("LunarLander-v3")
     
     for genome_id, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
-        
-        # Track fitness across 3 different maps
         run_scores = []
-        seeds = [42, 1337, 2024] # Specific seeds to ensure consistency
+        
+        # --- THE ELITE CHALLENGE ---
+        # 1 Fixed seed for benchmarking + 7 Random seeds for robustness.
+        seeds = [42] + [random.randint(0, 100000) for _ in range(7)] 
         
         for sim_seed in seeds:
             observation, info = env.reset(seed=sim_seed)
@@ -43,55 +45,77 @@ def eval_genomes(genomes, config):
                 action = output.index(max(output))
                 observation, reward, terminated, truncated, info = env.step(action)
 
-                # --- Reward Shaping (Calculated per frame) ---
-                dist_from_center = abs(observation[0])
-                # --- Precision Landing Logic ---
-                x_pos = observation[0]
+                # --- Variable Extraction ---
+                x_pos, y_pos = observation[0], observation[1]
+                v_horz, v_vert = observation[2], observation[3]
+                angle = observation[4]
+                left_leg, right_leg = observation[6], observation[7]
                 dist_from_center = abs(x_pos)
 
-                # 1. Exponential Centering: Reward is massive at 0, drops fast at 0.2
-                # This acts like a 'magnet' to the center
-                center_reward = 1.0 - (abs(observation[0]) * 2.0)
-                angle_penalty = abs(observation[4]) * 0.2
-                dist_from_ground = abs(observation[1])
-                v_speed = observation[3]
-                ground_proximity_reward = (1.0 - dist_from_ground) * 0.2
-                survival_bonus = 0.01
-                
-                total_run_reward += (reward + center_reward - angle_penalty + survival_bonus + ground_proximity_reward)
+                # --- 1. THE ANTI-CHEAT "LAVA WALLS" ---
+                # Punishment scales exponentially as they approach the screen edge (abs(x) > 0.8)
+                boundary_penalty = 0
+                if dist_from_center > 0.8:
+                    boundary_penalty = ((dist_from_center - 0.8) * 60.0) ** 2
 
-                # Speed penalty near ground
-                if dist_from_ground < 0.2:
-                    if abs(v_speed) > 0.1:
-                        # Heavily penalize slow-drifting or hovering near the surface
-                        total_run_reward -= 0.5 
-                    else:
-                        # Small reward for actually being still on/near the ground
-                        total_run_reward += 0.2
-                # 3. Fuel Efficiency (New)
-                # Every time the pilot uses an engine, the env 'reward' is negative.
-                # We will multiply that negative reward to make it "expensive" to use gas.
-                if reward < 0: 
-                    total_run_reward += (reward * 0.5) # Makes fuel 50% more expensive    
-                # 2. The "Boundary" Penalty
-                # If we are outside the flags (0.2), start cutting the reward deeply
-                if dist_from_center > 0.2:
-                    total_run_reward -= 0.8  # Heavy tax for being outside the goalposts   
+                # --- 2. PRECISION CENTER MAGNET ---
+                center_reward = 1.2 - (dist_from_center ** 2) * 6.0
+                
+                # --- 3. GROUND-ZONE FINESSE (y < 0.3) ---
+                if y_pos < 0.3:
+                    # Extreme focus on verticality and zero horizontal drift
+                    stability_penalty = (abs(angle) * 6.0) + (abs(v_horz) * 5.0)
                     
+                    # THE CRUNCH PENALTY: Heavily punish vertical impacts > 0.1 speed
+                    if v_vert < -0.10: 
+                        stability_penalty += abs(v_vert) * 20.0 
+                    
+                    # LEG CONTACT REWARD: Reward sticking the landing
+                    if left_leg and right_leg:
+                        total_run_reward += 5.0 
+                    elif left_leg or right_leg:
+                        total_run_reward += 1.5
+                        
+                    # ENGINE SUPPRESSION: Punish jittery engine use once touching ground
+                    if (left_leg or right_leg) and action != 0:
+                        total_run_reward -= 0.6
+                else:
+                    # High altitude stabilization
+                    stability_penalty = (abs(angle) * 0.5) + (abs(v_horz) * 0.2)
+
+                # --- 4. FLIGHT DYNAMICS ---
+                descent_pressure = 0
+                if y_pos > 0.1:
+                    if v_vert < -0.3:   # Falling too fast
+                        descent_pressure = -1.5
+                    elif v_vert < -0.05: # Perfect glide range
+                        descent_pressure = 1.5
+                    else:               # Hovering or Climbing (Wasteful)
+                        descent_pressure = -1.0
+
+                # --- 5. FINAL CALCULATION ---
+                total_run_reward += (reward + center_reward + descent_pressure - stability_penalty - boundary_penalty)
+                
+                # Dynamic Time Tax (High-altitude loitering is expensive)
+                total_run_reward -= (0.01 if y_pos < 0.3 else 0.12)
+
+                # --- 6. TERMINAL BONUSES/PENALTIES ---
                 if terminated or truncated:
-                    # --- FINAL LANDING BONUSES (One-Time) ---
-                    # Check if we landed safely (Gymnasium gives +100 for a safe landing)
+                    # Brutalize the crash so it's never an option
+                    if reward <= -100: 
+                        total_run_reward -= 600 
+                    
+                    # Success Bonuses (Bullseye)
                     if reward >= 100:
-                        # Did we land between the flags?
                         if dist_from_center < 0.1:
-                            total_run_reward += 100.0  # Huge bonus for a bullseye
+                            total_run_reward += 600.0 # Sniper Elite
                         elif dist_from_center < 0.2:
-                            total_run_reward += 50.0   # Decent bonus for being within flags
+                            total_run_reward += 300.0 
                     break
             
             run_scores.append(total_run_reward)
         
-        # The genome's fitness is the AVERAGE of all 3 maps
+        # Fitness is the average across all 8 trials
         genome.fitness = sum(run_scores) / len(run_scores)
         
     env.close()
@@ -117,7 +141,7 @@ def run_neat(config_file):
     checkpoint_prefix = os.path.join(checkpoint_dir, 'neat-checkpoint-')
     population.add_reporter(neat.Checkpointer(10, filename_prefix=checkpoint_prefix)) # Saves progress every 10 generations
 
-    winner = population.run(eval_genomes, 1000) # Run for up to 1000 generations
+    winner = population.run(eval_genomes, 500) # Run for up to 1000 generations
         
     # Save the final
     print("Training complete! Saving the final champion...")
@@ -491,16 +515,34 @@ if __name__ == "__main__":
             if len(sys.argv) > 2:
                 checkpoint_file = sys.argv[2]
                 print(f"Resuming from checkpoint: {checkpoint_file}")
+
                 # Restore the population state
                 p = neat.Checkpointer.restore_checkpoint(checkpoint_file)
+                p.config.fitness_threshold = 8000
                 # Re-add reporters because they aren't saved in the checkpoint
                 p.add_reporter(neat.StdOutReporter(True))
                 stats = neat.StatisticsReporter()
                 p.add_reporter(stats)
-                p.add_reporter(neat.Checkpointer(50, filename_prefix='neat-checkpoint-'))
+                checkpoint_dir = 'checkpoints'
+                checkpoint_prefix = os.path.join(checkpoint_dir, 'neat-checkpoint-')
+                p.add_reporter(neat.Checkpointer(10, filename_prefix=checkpoint_prefix))
                 
                 # Start running again
-                winner = p.run(eval_genomes, 500) # Run for 500 more generations
+                winner = p.run(eval_genomes, 50) # Run for 500 more generations
+                # Save the final
+                print("Training complete! Saving the final champion...")
+                with open('final_pilot_brain.pkl', 'wb') as f:
+                    pickle.dump(winner, f)
+                    
+                # GET THE ABSOLUTE BEST EVER SEEN
+                # This looks through the entire history, not just the last generation
+                best_ever = stats.best_genome() 
+
+                print(f"Final Best Fitness: {best_ever.fitness}")
+
+                with open('best_pilot_brain.pkl', 'wb') as f:
+                    pickle.dump(best_ever, f)
+        
             else:
                 # Start from scratch
                 run_neat(config_path)

@@ -1,7 +1,7 @@
 [NEAT]
 fitness_criterion     = max
-fitness_threshold     = 500
-pop_size              = 200
+fitness_threshold     = 8000
+pop_size              = 400
 reset_on_extinction   = False
 no_fitness_termination = False
 
@@ -9,14 +9,14 @@ no_fitness_termination = False
 # Network structure
 num_inputs              = 8
 num_outputs             = 4
-num_hidden              = 0
+num_hidden              = 2
 feed_forward            = True
-initial_connection      = full
+initial_connection      = full_direct
 
 # Activation function
 activation_default      = tanh
-activation_mutate_rate  = 0.0
-activation_options      = tanh
+activation_mutate_rate  = 0.1
+activation_options      = tanh relu sigmoid
 
 # Aggregation function
 aggregation_default     = sum
@@ -38,8 +38,8 @@ compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.5
 
 # Connection add/remove rates
-conn_add_prob           = 0.2
-conn_delete_prob        = 0.1
+conn_add_prob           = 0.1
+conn_delete_prob        = 0.2
 
 # Connection enable options
 enabled_default         = True
@@ -67,7 +67,7 @@ weight_init_stdev       = 1.0
 weight_init_type        = gaussian
 weight_max_value        = 30
 weight_min_value        = -30
-weight_mutate_power     = 0.1
+weight_mutate_power     = 0.5
 weight_mutate_rate      = 0.8
 weight_replace_rate     = 0.2
 
@@ -76,14 +76,14 @@ single_structural_mutation = false
 structural_mutation_surer  = default
 
 [DefaultSpeciesSet]
-compatibility_threshold = 2.0
+compatibility_threshold = 3.0
 
 [DefaultStagnation]
 species_fitness_func = max
-max_stagnation       = 50
+max_stagnation       = 10
 species_elitism      = 2
 
 [DefaultReproduction]
 elitism            = 10
-survival_threshold = 0.3
+survival_threshold = 0.1
 min_species_size   = 2
