@@ -4,7 +4,7 @@ import pygame
 import neat
 import gymnasium as gym
 import time
-import glob
+import os
 
 """
 Description: Preview the best brain found in a generation

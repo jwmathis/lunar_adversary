@@ -51,7 +51,7 @@ def eval_genomes(genomes, config):
 
                 # 1. Exponential Centering: Reward is massive at 0, drops fast at 0.2
                 # This acts like a 'magnet' to the center
-                center_reward = 0.2 * (1.0 - (dist_from_center ** 2))
+                center_reward = 1.0 - (abs(observation[0]) * 2.0)
                 angle_penalty = abs(observation[4]) * 0.2
                 dist_from_ground = abs(observation[1])
                 v_speed = observation[3]
