@@ -1,7 +1,7 @@
 [NEAT]
 fitness_criterion     = max
 fitness_threshold     = 200
-pop_size              = 50
+pop_size              = 150
 reset_on_extinction   = False
 no_fitness_termination = False
 
@@ -11,7 +11,7 @@ num_inputs              = 8
 num_outputs             = 4
 num_hidden              = 0
 feed_forward            = True
-initial_connection      = unconnected
+initial_connection      = full
 
 # Activation function
 activation_default      = tanh
@@ -67,7 +67,7 @@ weight_init_stdev       = 1.0
 weight_init_type        = gaussian
 weight_max_value        = 30
 weight_min_value        = -30
-weight_mutate_power     = 0.5
+weight_mutate_power     = 0.2
 weight_mutate_rate      = 0.8
 weight_replace_rate     = 0.2
 
@@ -76,7 +76,7 @@ single_structural_mutation = false
 structural_mutation_surer  = default
 
 [DefaultSpeciesSet]
-compatibility_threshold = 3.0
+compatibility_threshold = 2.5
 
 [DefaultStagnation]
 species_fitness_func = max
@@ -84,6 +84,6 @@ max_stagnation       = 20
 species_elitism      = 2
 
 [DefaultReproduction]
-elitism            = 2
+elitism            = 10
 survival_threshold = 0.2
 min_species_size   = 2

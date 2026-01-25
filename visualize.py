@@ -117,7 +117,7 @@ def draw_realtime_brain(genome, config, current_observations):
     
     # Define the area for the brain (Top-right corner)
     start_x, start_y = 720, 150
-    layer_width = 180
+    layer_width = 200
     node_spacing = 45
     
     # 1. Map coordinates for Nodes

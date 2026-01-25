@@ -69,10 +69,10 @@ def run_neat(config_file):
     population.add_reporter(stats) # Collects and reports statistics
     
 
-    for i in range(50): # Run for 50 generations
+    for i in range(500): # Run for 500 generations
         winner = population.run(eval_genomes, 1) # Run the simulation for 1 generation and get the best pilot
         
-        if i % 10 == 0 or i == 49: # Every 10 generations
+        if i % 10 == 0 or i == 499: # Every 10 generations
             # Save that generation's brain profile: 'brain_gen_X.png'
             draw_net(config, winner, False, f"brains/brain_gen_{i}")
             
@@ -80,7 +80,7 @@ def run_neat(config_file):
                 pickle.dump(winner, f)
             print(f"Saved snapshot of generation {i} pilot brain.")
         
-            preview_winner(winner, config)
+            #preview_winner(winner, config)
         
     # Save the champion
     print("Training complete! Saving the final champion...")
@@ -151,7 +151,7 @@ def test_evolution_history(config_path, snapshot_folder):
 
     env = gym.make("LunarLander-v3", render_mode="human")
     observation, info = env.reset()
-    screen = pygame.display.set_mode((1000, 600))
+    screen = pygame.display.set_mode((1000, 1000))
     # Loop through history
     for filename in files:
         gen_label = filename.split('_gen_')[1].split('.')[0]
@@ -185,8 +185,8 @@ def test_evolution_history(config_path, snapshot_folder):
 
             # --- Visuals ---
             # Standard HUD/Brain drawing
-            pygame.draw.rect(screen, (30, 30, 30), (600, 0, 400, 600))
-            pygame.draw.line(screen, (200, 200, 200), (600, 0), (600, 600), 3)
+            pygame.draw.rect(screen, (30, 30, 30), (600, 0, 400, 1000))
+            pygame.draw.line(screen, (200, 200, 200), (600, 0), (600, 1000), 3)
 
             draw_hud(env, total_reward, observation, step, fuel_spent=fuel_spent, gen_label=gen_label)
             draw_realtime_brain(genome, config, observation)
@@ -194,8 +194,8 @@ def test_evolution_history(config_path, snapshot_folder):
             pygame.display.flip()
 
         #print(f"Gen {gen_label} flight finished. Next pilot in 2 seconds...")
-        #time.sleep(5)
-        input("Press Enter to continue...")
+        time.sleep(2)
+        #input("Press Enter to continue...")
 
     env.close()
     print("Evolution Tour Complete!")
