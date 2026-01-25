@@ -5,7 +5,7 @@ import time
 import pickle
 from visualize import *
 import sys
-
+import pandas as pd
 
 # Create folders if they don't exist
 for folder in ['checkpoints', 'evolution_snapshots', 'brains']:
@@ -163,68 +163,75 @@ def test_best_pilot(config_path, genome_path):
         import time
         time.sleep(2) # Pause to see the final position
 
-def test_evolution_history(config_path, snapshot_folder):
+def playback_evolution(checkpoint_folder, config_path, interval=50):
+    """
+    Renders a flight for every 'interval' generations.
+    """
+    # 1. Setup the environment for rendering
+    # Use 'human' to watch it live, or 'rgb_array' if you want to record
+    env = gym.make("LunarLander-v3", render_mode="human")
+    
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
 
-    # 1. Get all the saved brains and sort them by generation number
-    # Assumes files are named 'pilot_gen_0.pkl', 'pilot_gen_10.pkl', etc.
-    files = [f for f in os.listdir(snapshot_folder) if f.endswith('.pkl')]
-    # Sort them numerically so Gen 0 comes before Gen 10
-    files.sort(key=lambda x: int(x.split('_gen_')[1].split('.')[0]))
+    # 2. Get and sort checkpoints
+    files = [f for f in os.listdir(checkpoint_folder) if f.startswith('neat-checkpoint-')]
+    files.sort(key=lambda x: int(x.split('-')[-1]))
 
-    env = gym.make("LunarLander-v3", render_mode="human")
-    observation, info = env.reset()
-    screen = pygame.display.set_mode((1000, 1000))
-    # Loop through history
     for filename in files:
-        gen_label = filename.split('_gen_')[1].split('.')[0]
-        filepath = os.path.join(snapshot_folder, filename)
-
-        with open(filepath, 'rb') as f:
-            genome = pickle.load(f)
-
-        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        gen_num = int(filename.split('-')[-1])
         
-        observation, info = env.reset()
-        total_reward = 0.0
+        # Only play back specific milestones (e.g., every 50 generations)
+        if gen_num % interval != 0 and gen_num != 373: # Always include the final one
+            continue
+
+        print(f"\n--- Showing Pilot from Generation {gen_num} ---")
+        checkpoint_path = os.path.join(checkpoint_folder, filename)
+        p = neat.Checkpointer.restore_checkpoint(checkpoint_path)
+        
+        # Find the best genome in this checkpoint
+        best_genome = None
+        for g in p.population.values():
+            if best_genome is None or (g.fitness is not None and g.fitness > best_genome.fitness):
+                best_genome = g
+        
+        if best_genome is None: continue
+
+        # 3. Fly the mission
+        net = neat.nn.FeedForwardNetwork.create(best_genome, config)
+        observation, info = env.reset(seed=42) # Use same seed to see improvement on same map
+        screen = pygame.display.set_mode((1000, 1000))
+        done = False
+        total_reward = 0
         fuel_spent = 0.0
         step = 0
-        terminated = False
-        truncated = False
-
-        print(f"Now showing Pilot from Generation {gen_label}")
-        
-        while not (terminated or truncated):
-            outputs = net.activate(observation)
-            action = outputs.index(max(outputs))
-            
+        while not done:
+            env.render()
+            output = net.activate(observation)
+            action = output.index(max(output))
             # Track fuel
             if action == 2: fuel_spent += 0.3
             elif action in [1, 3]: fuel_spent += 0.03
-            
+            step += 1
             observation, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
-            step += 1
-
-            # --- Visuals ---
+            done = terminated or truncated
+             # --- Visuals ---
             # Standard HUD/Brain drawing
             pygame.draw.rect(screen, (30, 30, 30), (600, 0, 400, 1000))
             pygame.draw.line(screen, (200, 200, 200), (600, 0), (600, 1000), 3)
 
-            draw_hud(env, total_reward, observation, step, fuel_spent=fuel_spent, gen_label=gen_label)
-            draw_realtime_brain(genome, config, observation)
+            draw_hud(env, total_reward, observation, step, fuel_spent=fuel_spent, gen_label=gen_num)
+            draw_realtime_brain(best_genome, config, observation)
             
             pygame.display.flip()
-
-        #print(f"Gen {gen_label} flight finished. Next pilot in 2 seconds...")
-        time.sleep(2)
-        #input("Press Enter to continue...")
+            
+        print(f"Generation {gen_num} Result: {total_reward:.2f}")
+        time.sleep(1) # Pause between generations
 
     env.close()
-    print("Evolution Tour Complete!")
-
+    
 def validate_pilot(config_path, genome_path, num_episodes=50):
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
@@ -269,7 +276,99 @@ def validate_pilot(config_path, genome_path, num_episodes=50):
     print(f"Crash Rate: {(crashes/num_episodes)*100:.1f}%")
     print(f"Average Reward: {total_reward/num_episodes:.2f}")
     env.close()
+        
+def make_evolution_plots():
+    os.makedirs("evolution_plots", exist_ok=True)
+    visualize_all_checkpoints("checkpoints", "config-feedforward")
+ 
+def plot_fitness_from_checkpoints(checkpoint_folder, filename="evolution_graph.png"):
+    # 1. Gather all checkpoint files and sort them numerically
+    files = [f for f in os.listdir(checkpoint_folder) if f.startswith('neat-checkpoint-')]
+    files.sort(key=lambda x: int(x.split('-')[-1]))
+
+    generations = []
+    best_fitness = []
+    avg_fitness = []
+
+    print(f"Extracting data from {len(files)} checkpoints...")
+
+    for filename in files:
+        gen_num = int(filename.split('-')[-1])
+        checkpoint_path = os.path.join(checkpoint_folder, filename)
+        
+        # Load the population snapshot
+        p = neat.Checkpointer.restore_checkpoint(checkpoint_path)
+        
+        # Extract fitness values from the current population
+        all_fitnesses = [g.fitness for g in p.population.values() if g.fitness is not None]
+        
+        if all_fitnesses:
+            generations.append(gen_num)
+            best_fitness.append(max(all_fitnesses))
+            avg_fitness.append(sum(all_fitnesses) / len(all_fitnesses))
+
+    # 2. Your Plotting Logic (Modified slightly to use the extracted lists)
+    plt.style.use('dark_background') 
+    plt.figure(figsize=(12, 6))
     
+    # Plotting the data we gathered
+    plt.plot(generations, best_fitness, label='Best Pilot', color='#50E3C2', linewidth=2)
+    plt.plot(generations, avg_fitness, label='Average Population', color='#4A90E2', linestyle='--')
+    
+    # Formatting
+    plt.title('Pilot Intelligence Evolution (Reconstructed from Checkpoints)')
+    plt.xlabel('Generation')
+    plt.ylabel('Fitness (Score)')
+    plt.legend()
+    plt.grid(alpha=0.2)
+    
+    plt.savefig('evolution_graph.png')
+    print(f"Graph saved as evolution_graph.png")
+    plt.show()
+ 
+def plot_smoothed_fitness(checkpoint_folder, window_size=5):
+    files = [f for f in os.listdir(checkpoint_folder) if f.startswith('neat-checkpoint-')]
+    files.sort(key=lambda x: int(x.split('-')[-1]))
+
+    generations, best_fitness, avg_fitness = [], [], []
+
+    for filename in files:
+        p = neat.Checkpointer.restore_checkpoint(os.path.join(checkpoint_folder, filename))
+        all_fits = [g.fitness for g in p.population.values() if g.fitness is not None]
+        if all_fits:
+            generations.append(int(filename.split('-')[-1]))
+            best_fitness.append(max(all_fits))
+            avg_fitness.append(sum(all_fits) / len(all_fits))
+
+    # Convert to Series for easy math
+    best_series = pd.Series(best_fitness)
+    avg_series = pd.Series(avg_fitness)
+    
+    # Calculate Moving Averages
+    smoothed_best = best_series.rolling(window=window_size, min_periods=1).mean()
+    smoothed_avg = avg_series.rolling(window=window_size, min_periods=1).mean()
+
+    plt.style.use('dark_background') 
+    plt.figure(figsize=(12, 6))
+    
+    # Plot Raw Data (faintly in the background)
+    plt.plot(generations, best_fitness, color='#50E3C2', alpha=0.2, label='_nolegend_')
+    plt.plot(generations, avg_fitness, color='#4A90E2', alpha=0.1, label='_nolegend_')
+    
+    # Plot Smoothed Data (thick and bold)
+    plt.plot(generations, smoothed_best, label=f'Best Pilot ({window_size}-Gen Avg)', color='#50E3C2', linewidth=3)
+    plt.plot(generations, smoothed_avg, label=f'Pop. Mean ({window_size}-Gen Avg)', color='#4A90E2', linewidth=2, linestyle='--')
+    
+    plt.title('Smoothed Pilot Intelligence Evolution')
+    plt.xlabel('Generation')
+    plt.ylabel('Fitness Score')
+    plt.legend()
+    plt.grid(color='gray', linestyle=':', alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('smoothed_evolution.png')
+    plt.show()
+         
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, "config-feedforward")
@@ -281,38 +380,43 @@ if __name__ == "__main__":
         command = sys.argv[1].lower()
         if command == "train":
             # Check if a checkpoint file was provided as the second argument
-            # if len(sys.argv) > 2:
-            #     checkpoint_file = sys.argv[2]
-            #     print(f"Resuming from checkpoint: {checkpoint_file}")
-            #     # Restore the population state
-            #     p = neat.Checkpointer.restore_checkpoint(checkpoint_file)
-            #     # Re-add reporters because they aren't saved in the checkpoint
-            #     p.add_reporter(neat.StdOutReporter(True))
-            #     stats = neat.StatisticsReporter()
-            #     p.add_reporter(stats)
-            #     p.add_reporter(neat.Checkpointer(50, filename_prefix='neat-checkpoint-'))
+            if len(sys.argv) > 2:
+                checkpoint_file = sys.argv[2]
+                print(f"Resuming from checkpoint: {checkpoint_file}")
+                # Restore the population state
+                p = neat.Checkpointer.restore_checkpoint(checkpoint_file)
+                # Re-add reporters because they aren't saved in the checkpoint
+                p.add_reporter(neat.StdOutReporter(True))
+                stats = neat.StatisticsReporter()
+                p.add_reporter(stats)
+                p.add_reporter(neat.Checkpointer(50, filename_prefix='neat-checkpoint-'))
                 
-            #     # Start running again
-            #     winner = p.run(eval_genomes, 500) # Run for 500 more generations
-            # else:
-            #     print(f"DEBUG: Loading config from: {os.path.abspath(config_path)}")
-            #     # Start from scratch
-            #     run_neat(config_path)
-            run_neat(config_path)
+                # Start running again
+                winner = p.run(eval_genomes, 500) # Run for 500 more generations
+            else:
+                # Start from scratch
+                run_neat(config_path)
+
         elif command == "test_best":
             if len(sys.argv) < 3:
                 print("Please provide the genome file to test.")
                 sys.exit(1)
             genome_file = sys.argv[2]
             test_best_pilot(config_path, genome_file)
-        elif command == "test_history":
-            test_evolution_history(config_path, 'evolution_snapshots')
         elif command == "validate":
             if len(sys.argv) < 3:
                 print("Usage: python train_pilot.py validate [genome_file]")
                 sys.exit(1)
             genome_file = sys.argv[2]
             validate_pilot(config_path, genome_file)
+        elif command == "plots":
+            make_evolution_plots()
+        elif command == "playback":
+            playback_evolution('checkpoints', config_path, interval=10)
+        elif command =="fitness_graph":
+            plot_fitness_from_checkpoints('checkpoints')
+        elif command == "smoothed_graph":
+            plot_smoothed_fitness('checkpoints', window_size=5)
         else:
             print("Unknown command. Use 'train', 'test_best', or 'test_history'.")
             sys.exit(1)

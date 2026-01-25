@@ -291,13 +291,39 @@ def visualize_checkpoint_brain(checkpoint_path, config_path):
     draw_net(config, best_genome, False, filename=f"brain_from_{checkpoint_path}")
     print(f"Brain diagram saved for {checkpoint_path}")
     
+def visualize_all_checkpoints(folder_path, config_path):
+    # Get all files that start with 'neat-checkpoint-'
+    files = [f for f in os.listdir(folder_path) if f.startswith('neat-checkpoint-')]
+    
+    # Sort them numerically so the evolution looks chronological
+    files.sort(key=lambda x: int(x.split('-')[-1]))
 
-def generate_evolution_gallery(config_path):
-    checkpoints = glob.glob("checkpoints/neat-checkpoint-*")
-    for cp in checkpoints:
-        # Extract the generation number for the filename
-        gen = cp.split('-')[-1]
-        p = neat.Checkpointer.restore_checkpoint(cp)
+    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                         config_path)
+
+    for filename in files:
+        checkpoint_path = os.path.join(folder_path, filename)
+        p = neat.Checkpointer.restore_checkpoint(checkpoint_path)
         
-        # Draw the best brain of that generation
-        draw_net(p.config, p.best_genome, False, filename=f"brains/brain_gen_{gen}")
+        # NEW LOGIC: Manually find the best genome in the population
+        best_genome = None
+        for g in p.population.values():
+            if best_genome is None or (g.fitness is not None and g.fitness > best_genome.fitness):
+                best_genome = g
+        
+        # Safety check: if for some reason we still don't have one, skip it
+        if best_genome is None:
+            print(f"Skipping {filename}: No genomes found.")
+            continue
+
+        gen_num = filename.split('-')[-1]
+        
+        # Ensure the visualize function gets what it needs
+        try:
+            draw_net(config, best_genome, False, filename=f"evolution_plots/brain_gen_{gen_num}")
+            print(f"Generated brain diagram for Generation {gen_num}")
+        except Exception as e:
+            print(f"Error drawing generation {gen_num}: {e}")
+
+    print("Done!")
