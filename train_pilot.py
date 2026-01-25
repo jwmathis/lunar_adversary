@@ -53,8 +53,18 @@ def eval_genomes(genomes, config):
                 total_run_reward += (reward + center_reward - angle_penalty + survival_bonus + ground_proximity_reward)
 
                 # Speed penalty near ground
-                if dist_from_ground < 0.2 and abs(v_speed) > 0.1:
-                    total_run_reward -= (abs(v_speed) * 0.3)
+                if dist_from_ground < 0.2:
+                    if abs(v_speed) > 0.1:
+                        # Heavily penalize slow-drifting or hovering near the surface
+                        total_run_reward -= 0.5 
+                    else:
+                        # Small reward for actually being still on/near the ground
+                        total_run_reward += 0.2
+                # 3. Fuel Efficiency (New)
+                # Every time the pilot uses an engine, the env 'reward' is negative.
+                # We will multiply that negative reward to make it "expensive" to use gas.
+                if reward < 0: 
+                    total_run_reward += (reward * 0.5) # Makes fuel 50% more expensive    
                     
                 if terminated or truncated:
                     break
