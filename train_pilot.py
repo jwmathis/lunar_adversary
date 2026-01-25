@@ -6,9 +6,11 @@ import pickle
 from visualize import *
 import sys
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
 # Create folders if they don't exist
-for folder in ['checkpoints', 'evolution_snapshots', 'brains']:
+for folder in ['checkpoints', 'evolution_snapshots', 'evolution_plots']:
     if not os.path.exists(folder):
         os.makedirs(folder)
         
@@ -43,7 +45,13 @@ def eval_genomes(genomes, config):
 
                 # --- Reward Shaping (Calculated per frame) ---
                 dist_from_center = abs(observation[0])
-                center_reward = (1.0 - dist_from_center) * 0.1
+                # --- Precision Landing Logic ---
+                x_pos = observation[0]
+                dist_from_center = abs(x_pos)
+
+                # 1. Exponential Centering: Reward is massive at 0, drops fast at 0.2
+                # This acts like a 'magnet' to the center
+                center_reward = 0.2 * (1.0 - (dist_from_center ** 2))
                 angle_penalty = abs(observation[4]) * 0.2
                 dist_from_ground = abs(observation[1])
                 v_speed = observation[3]
@@ -65,8 +73,20 @@ def eval_genomes(genomes, config):
                 # We will multiply that negative reward to make it "expensive" to use gas.
                 if reward < 0: 
                     total_run_reward += (reward * 0.5) # Makes fuel 50% more expensive    
+                # 2. The "Boundary" Penalty
+                # If we are outside the flags (0.2), start cutting the reward deeply
+                if dist_from_center > 0.2:
+                    total_run_reward -= 0.8  # Heavy tax for being outside the goalposts   
                     
                 if terminated or truncated:
+                    # --- FINAL LANDING BONUSES (One-Time) ---
+                    # Check if we landed safely (Gymnasium gives +100 for a safe landing)
+                    if reward >= 100:
+                        # Did we land between the flags?
+                        if dist_from_center < 0.1:
+                            total_run_reward += 100.0  # Huge bonus for a bullseye
+                        elif dist_from_center < 0.2:
+                            total_run_reward += 50.0   # Decent bonus for being within flags
                     break
             
             run_scores.append(total_run_reward)
@@ -276,7 +296,73 @@ def validate_pilot(config_path, genome_path, num_episodes=50):
     print(f"Crash Rate: {(crashes/num_episodes)*100:.1f}%")
     print(f"Average Reward: {total_reward/num_episodes:.2f}")
     env.close()
+
+def validate_pilot_precision(brain_path, config_path, num_trials=50):
+    # Load the brain and config
+    with open(brain_path, "rb") as f:
+        genome = pickle.load(f)
+    
+    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                         config_path)
+    
+    net = neat.nn.FeedForwardNetwork.create(genome, config)
+    env = gym.make("LunarLander-v3")
+    
+    rewards = []
+    displacements = []
+    success_count = 0
+
+    print(f"--- Validating Precision over {num_trials} Random Maps ---")
+
+    for i in range(num_trials):
+        observation, info = env.reset() # Random seed
+        done = False
+        episode_reward = 0
         
+        while not done:
+            output = net.activate(observation)
+            action = np.argmax(output)
+            observation, reward, terminated, truncated, info = env.step(action)
+            episode_reward += reward
+            done = terminated or truncated
+            
+            if done:
+                # Track how far from x=0 the lander is at the end
+                final_x = observation[0]
+                displacements.append(abs(final_x))
+                
+                # Check for Gymnasium's official success (200 pts)
+                if episode_reward >= 200:
+                    success_count += 1
+        
+        rewards.append(episode_reward)
+        print(f"Trial {i+1}: Reward = {episode_reward:>7.2f} | Final X = {final_x:>6.3f}")
+
+    # --- FINAL SUMMARY ---
+    avg_reward = sum(rewards) / num_trials
+    avg_precision = sum(displacements) / num_trials
+    success_rate = (success_count / num_trials) * 100
+    
+    print("\n" + "="*40)
+    print("      FINAL PRECISION RESULTS")
+    print("="*40)
+    print(f"Success Rate:     {success_rate:.1f}%")
+    print(f"Average Reward:   {avg_reward:.2f}")
+    print(f"Average Offset:   {avg_precision:.4f} units")
+    
+    # Analyze the offset
+    if avg_precision < 0.05:
+        print("Rating: SNIPER (Inside the bullseye)")
+    elif avg_precision < 0.2:
+        print("Rating: PROFESSIONAL (Inside the flags)")
+    else:
+        print("Rating: ROOKIE (Safe but scattered)")
+    print("="*40)
+
+    env.close()
+    plot_precision_histogram(displacements)
+            
 def make_evolution_plots():
     os.makedirs("evolution_plots", exist_ok=True)
     visualize_all_checkpoints("checkpoints", "config-feedforward")
@@ -369,6 +455,28 @@ def plot_smoothed_fitness(checkpoint_folder, window_size=5):
     plt.savefig('smoothed_evolution.png')
     plt.show()
          
+def plot_precision_histogram(displacements):
+    plt.style.use('dark_background')
+    plt.figure(figsize=(10, 6))
+    
+    # Create the histogram
+    # We use 20 bins to get a detailed view of the 0.0 to 0.5 range
+    n, bins, patches = plt.hist(displacements, bins=20, color='#50E3C2', alpha=0.7, edgecolor='white')
+    
+    # Highlight the "Goal Zone" (the flags are at 0.2)
+    plt.axvspan(0, 0.2, color='green', alpha=0.1, label='Inside Flags (Success Zone)')
+    plt.axvline(0.2, color='red', linestyle='--', alpha=0.5, label='Flag Boundary')
+    
+    plt.title('Landing Precision Distribution (Distance from Center)')
+    plt.xlabel('Offset from Center (0.0 = Perfect Bullseye)')
+    plt.ylabel('Number of Landings')
+    plt.legend()
+    plt.grid(axis='y', alpha=0.3)
+    
+    plt.savefig('landing_precision.png')
+    print("Precision histogram saved as landing_precision.png")
+    plt.show()
+    
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, "config-feedforward")
@@ -409,14 +517,18 @@ if __name__ == "__main__":
                 sys.exit(1)
             genome_file = sys.argv[2]
             validate_pilot(config_path, genome_file)
+        elif command == "validate_precision":
+            if len(sys.argv) < 3:
+                print("Usage: python train_pilot.py validate_precision [genome_file]")
+                sys.exit(1)
+            genome_file = sys.argv[2]
+            validate_pilot_precision(genome_file, config_path)
         elif command == "plots":
             make_evolution_plots()
+            plot_fitness_from_checkpoints('checkpoints')
+            plot_smoothed_fitness('checkpoints', window_size=5)
         elif command == "playback":
             playback_evolution('checkpoints', config_path, interval=10)
-        elif command =="fitness_graph":
-            plot_fitness_from_checkpoints('checkpoints')
-        elif command == "smoothed_graph":
-            plot_smoothed_fitness('checkpoints', window_size=5)
         else:
             print("Unknown command. Use 'train', 'test_best', or 'test_history'.")
             sys.exit(1)
