@@ -32,8 +32,7 @@ def eval_genomes(genomes, config):
         net = neat.nn.FeedForwardNetwork.create(genome, config)
         run_scores = []
         
-        # --- THE ELITE CHALLENGE ---
-        # 1 Fixed seed for benchmarking + 7 Random seeds for robustness.
+        # 8 seeds to balance speed and robust learning
         seeds = [42] + [random.randint(0, 100000) for _ in range(7)] 
         
         for sim_seed in seeds:
@@ -45,77 +44,71 @@ def eval_genomes(genomes, config):
                 action = output.index(max(output))
                 observation, reward, terminated, truncated, info = env.step(action)
 
-                # --- Variable Extraction ---
                 x_pos, y_pos = observation[0], observation[1]
                 v_horz, v_vert = observation[2], observation[3]
                 angle = observation[4]
                 left_leg, right_leg = observation[6], observation[7]
                 dist_from_center = abs(x_pos)
 
-                # --- 1. THE ANTI-CHEAT "LAVA WALLS" ---
-                # Punishment scales exponentially as they approach the screen edge (abs(x) > 0.8)
+                # 1. THE LAVA WALLS (Kept from your Elite run)
                 boundary_penalty = 0
                 if dist_from_center > 0.8:
                     boundary_penalty = ((dist_from_center - 0.8) * 60.0) ** 2
 
-                # --- 2. PRECISION CENTER MAGNET ---
+                # 2. CENTER MAGNET
                 center_reward = 1.2 - (dist_from_center ** 2) * 6.0
                 
-                # --- 3. GROUND-ZONE FINESSE (y < 0.3) ---
+                # 3. GROUND-ZONE FINESSE & THE TWITCH KILLER
                 if y_pos < 0.3:
-                    # Extreme focus on verticality and zero horizontal drift
-                    stability_penalty = (abs(angle) * 6.0) + (abs(v_horz) * 5.0)
+                    stability_penalty = (abs(angle) * 8.0) + (abs(v_horz) * 6.0)
                     
-                    # THE CRUNCH PENALTY: Heavily punish vertical impacts > 0.1 speed
                     if v_vert < -0.10: 
                         stability_penalty += abs(v_vert) * 20.0 
                     
-                    # LEG CONTACT REWARD: Reward sticking the landing
+                    # --- REFINED TWITCH KILLER ---
                     if left_leg and right_leg:
-                        total_run_reward += 5.0 
+                        if action != 0: 
+                            # Punishment for jittering on the ground
+                            total_run_reward -= 10.0  
+                        else:
+                            # MASSIVE reward for absolute stillness (The "Carrot")
+                            total_run_reward += 20.0 
                     elif left_leg or right_leg:
-                        total_run_reward += 1.5
-                        
-                    # ENGINE SUPPRESSION: Punish jittery engine use once touching ground
-                    if (left_leg or right_leg) and action != 0:
-                        total_run_reward -= 0.6
+                        if action != 0:
+                            total_run_reward -= 5.0
                 else:
-                    # High altitude stabilization
                     stability_penalty = (abs(angle) * 0.5) + (abs(v_horz) * 0.2)
 
-                # --- 4. FLIGHT DYNAMICS ---
+                # 4. FLIGHT DYNAMICS
                 descent_pressure = 0
                 if y_pos > 0.1:
-                    if v_vert < -0.3:   # Falling too fast
+                    if v_vert < -0.3:
                         descent_pressure = -1.5
-                    elif v_vert < -0.05: # Perfect glide range
+                    elif v_vert < -0.05:
                         descent_pressure = 1.5
-                    else:               # Hovering or Climbing (Wasteful)
+                    else:
                         descent_pressure = -1.0
 
-                # --- 5. FINAL CALCULATION ---
+                # 5. FINAL CALCULATION
                 total_run_reward += (reward + center_reward + descent_pressure - stability_penalty - boundary_penalty)
                 
-                # Dynamic Time Tax (High-altitude loitering is expensive)
-                total_run_reward -= (0.01 if y_pos < 0.3 else 0.12)
+                # Time Tax: Forces the lander to actually land rather than hover
+                total_run_reward -= (0.05 if y_pos < 0.2 else 0.12)
 
-                # --- 6. TERMINAL BONUSES/PENALTIES ---
+                # 6. TERMINAL BONUSES/PENALTIES
                 if terminated or truncated:
-                    # Brutalize the crash so it's never an option
-                    if reward <= -100: 
+                    if reward <= -100: # CRASH
                         total_run_reward -= 600 
                     
-                    # Success Bonuses (Bullseye)
-                    if reward >= 100:
+                    if reward >= 100: # SUCCESSFUL LANDING
                         if dist_from_center < 0.1:
-                            total_run_reward += 600.0 # Sniper Elite
+                            total_run_reward += 800.0 
                         elif dist_from_center < 0.2:
-                            total_run_reward += 300.0 
+                            total_run_reward += 400.0 
                     break
             
             run_scores.append(total_run_reward)
         
-        # Fitness is the average across all 8 trials
         genome.fitness = sum(run_scores) / len(run_scores)
         
     env.close()
@@ -518,14 +511,17 @@ if __name__ == "__main__":
 
                 # Restore the population state
                 p = neat.Checkpointer.restore_checkpoint(checkpoint_file)
-                p.config.fitness_threshold = 8000
+                p.config.fitness_threshold = 12000
+                p.config.conn_add_prob = 0.5
+                p.config.node_add_prob = 0.3
+                p.config.max_stagnation = 20
                 # Re-add reporters because they aren't saved in the checkpoint
                 p.add_reporter(neat.StdOutReporter(True))
                 stats = neat.StatisticsReporter()
                 p.add_reporter(stats)
                 checkpoint_dir = 'checkpoints'
                 checkpoint_prefix = os.path.join(checkpoint_dir, 'neat-checkpoint-')
-                p.add_reporter(neat.Checkpointer(10, filename_prefix=checkpoint_prefix))
+                p.add_reporter(neat.Checkpointer(1, filename_prefix=checkpoint_prefix))
                 
                 # Start running again
                 winner = p.run(eval_genomes, 50) # Run for 500 more generations
