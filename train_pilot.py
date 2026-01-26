@@ -32,8 +32,8 @@ def eval_genomes(genomes, config):
         net = neat.nn.FeedForwardNetwork.create(genome, config)
         run_scores = []
         
-        # 8 seeds to balance speed and robust learning
-        seeds = [42] + [random.randint(0, 100000) for _ in range(7)] 
+        # Using 10 seeds for high-reliability testing
+        seeds = [42] + [random.randint(0, 100000) for _ in range(9)] 
         
         for sim_seed in seeds:
             observation, info = env.reset(seed=sim_seed)
@@ -44,71 +44,73 @@ def eval_genomes(genomes, config):
                 action = output.index(max(output))
                 observation, reward, terminated, truncated, info = env.step(action)
 
+                # Variable Extraction
                 x_pos, y_pos = observation[0], observation[1]
                 v_horz, v_vert = observation[2], observation[3]
                 angle = observation[4]
                 left_leg, right_leg = observation[6], observation[7]
                 dist_from_center = abs(x_pos)
 
-                # 1. THE LAVA WALLS (Kept from your Elite run)
+                # 1. THE LAVA WALLS (Keeps the pilot centered)
                 boundary_penalty = 0
                 if dist_from_center > 0.8:
-                    boundary_penalty = ((dist_from_center - 0.8) * 60.0) ** 2
+                    boundary_penalty = ((dist_from_center - 0.8) * 70.0) ** 2
 
-                # 2. CENTER MAGNET
-                center_reward = 1.2 - (dist_from_center ** 2) * 6.0
+                # 2. PRECISION CENTER MAGNET
+                center_reward = 1.5 - (dist_from_center ** 2) * 8.0
                 
-                # 3. GROUND-ZONE FINESSE & THE TWITCH KILLER
-                if y_pos < 0.3:
-                    stability_penalty = (abs(angle) * 8.0) + (abs(v_horz) * 6.0)
+                # 3. THE "SILENCE" LOGIC (Ground-Zone Finesse)
+                if y_pos < 0.25:
+                    # Harsh penalties for horizontal drift and tilt near ground
+                    stability_penalty = (abs(angle) * 10.0) + (abs(v_horz) * 8.0)
                     
                     if v_vert < -0.10: 
-                        stability_penalty += abs(v_vert) * 20.0 
+                        stability_penalty += abs(v_vert) * 25.0 
                     
-                    # --- REFINED TWITCH KILLER ---
+                    # --- THE TWITCH KILLER ---
                     if left_leg and right_leg:
                         if action != 0: 
-                            # Punishment for jittering on the ground
-                            total_run_reward -= 10.0  
+                            total_run_reward -= 15.0 # Punishment for jitter
                         else:
-                            # MASSIVE reward for absolute stillness (The "Carrot")
-                            total_run_reward += 20.0 
+                            total_run_reward += 25.0 # MASSIVE bonus for shutting down
                     elif left_leg or right_leg:
                         if action != 0:
-                            total_run_reward -= 5.0
+                            total_run_reward -= 8.0
                 else:
+                    # High altitude stabilization
                     stability_penalty = (abs(angle) * 0.5) + (abs(v_horz) * 0.2)
 
                 # 4. FLIGHT DYNAMICS
                 descent_pressure = 0
                 if y_pos > 0.1:
-                    if v_vert < -0.3:
-                        descent_pressure = -1.5
-                    elif v_vert < -0.05:
-                        descent_pressure = 1.5
-                    else:
+                    if v_vert < -0.35:   # Falling too fast
+                        descent_pressure = -2.0
+                    elif v_vert < -0.05: # Optimal glide
+                        descent_pressure = 2.0
+                    else:               # Wasting fuel hovering
                         descent_pressure = -1.0
 
-                # 5. FINAL CALCULATION
+                # 5. FINAL ACCUMULATION
                 total_run_reward += (reward + center_reward + descent_pressure - stability_penalty - boundary_penalty)
                 
-                # Time Tax: Forces the lander to actually land rather than hover
-                total_run_reward -= (0.05 if y_pos < 0.2 else 0.12)
+                # Flat Time Tax to prevent "Hover-stalling"
+                total_run_reward -= 0.10
 
-                # 6. TERMINAL BONUSES/PENALTIES
+                # 6. TERMINAL BONUSES
                 if terminated or truncated:
-                    if reward <= -100: # CRASH
-                        total_run_reward -= 600 
+                    if reward <= -100: # Crash
+                        total_run_reward -= 800 
                     
-                    if reward >= 100: # SUCCESSFUL LANDING
-                        if dist_from_center < 0.1:
-                            total_run_reward += 800.0 
-                        elif dist_from_center < 0.2:
-                            total_run_reward += 400.0 
+                    if reward >= 100: # Successful Landing
+                        if dist_from_center < 0.05:
+                            total_run_reward += 1000.0 # Bullseye sniper
+                        elif dist_from_center < 0.15:
+                            total_run_reward += 500.0 
                     break
             
             run_scores.append(total_run_reward)
         
+        # Fitness is the average across all trials
         genome.fitness = sum(run_scores) / len(run_scores)
         
     env.close()
@@ -512,9 +514,10 @@ if __name__ == "__main__":
                 # Restore the population state
                 p = neat.Checkpointer.restore_checkpoint(checkpoint_file)
                 p.config.fitness_threshold = 12000
-                p.config.conn_add_prob = 0.5
-                p.config.node_add_prob = 0.3
+                p.config.conn_add_prob = 0.1
+                p.config.node_add_prob = 0.05
                 p.config.max_stagnation = 20
+                p.config.weight_mutate_power = 0.2
                 # Re-add reporters because they aren't saved in the checkpoint
                 p.add_reporter(neat.StdOutReporter(True))
                 stats = neat.StatisticsReporter()

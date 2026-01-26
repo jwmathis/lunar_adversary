@@ -93,5 +93,5 @@ def create_highlight_reel(genome_path, config_path, seeds=[42, 101, 500, 777, 13
     
 if __name__ == "__main__":
     # Point these to your specific files
-    record_pilot("best_pilot_brain.pkl", "config-feedforward")
-    #create_highlight_reel("best_pilot_brain.pkl", "config-feedforward")
+    #record_pilot("best_pilot_brain.pkl", "config-feedforward")
+    create_highlight_reel("best_pilot_brain.pkl", "config-feedforward")
