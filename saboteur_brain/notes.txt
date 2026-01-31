@@ -1,0 +1,84 @@
+1) The bully saboteur brain was the first training. It was trained with 600 steps (about 7-10 seconds). This has forced the saboteur to be efficient. If it doesn't crash the pilot in 10 seconds, it has failed.
+2) The assassin saboteur
+
+3) The phantom saboteur
+1. What Has Changed?
+
+The core architecture of the Saboteur was upgraded in three specific ways:
+
+    Increased Resolution: You moved from 12 segments to 20 segments. Each segment now covers only 30 steps (0.5 seconds) instead of 50 steps.
+
+    Force Sparsity (The "Zero-Force" mutation): You added a 20% chance for segments to drop to 0.00N during mutation.
+
+    Complex Fitness Function: The Saboteur is no longer just rewarded for a low pilot score; it is now heavily penalized for using high average force (avg×5.0) and high peak force (peak×2.0).
+
+2. Why Were These Changes Made?
+
+These changes shifted the "evolutionary pressure" from raw power to strategic efficiency:
+
+    To Expose Logic Flaws: By increasing the segments to 20, you allowed the Saboteur to find "micro-windows" of vulnerability that a long, 50-step wind would miss.
+
+    To Encourage Subtlety: The force penalties were added so the Saboteur would stop "shoving" the lander and start "tripping" it.
+
+    To Improve Generalization: Training across three different seeds (42, 101, 999) forced the Saboteur to find a wind pattern that breaks the Pilot's general logic, rather than just exploiting a specific piece of terrain.
+
+3. Why This Saboteur is "Better"
+
+Even though the Pilot's score in Seed 42 was technically higher (-586) than the previous "Assassin" (-880), this new version is a superior adversarial agent for these reasons:
+
+    Higher Efficiency (The "Return on Investment"): The Saboteur achieved a significant crash using an average of only 10.8N. In AI safety and adversarial testing, a "small" perturbation that causes a "large" failure is considered much more successful than a large perturbation.
+
+    Strategic "Quiet" Periods: Looking at segments 1, 12, 13, and 17, the Saboteur used 0.00N. This demonstrates it has learned that blowing wind at those specific times is a waste of energy—the Pilot is already failing or in a state where wind won't help the crash.
+
+    Optimal "Whiplash" Timing: It discovered a perfect 180-degree force flip between segments 10 and 11 (-22N to +14N). This is a "surgical" maneuver specifically designed to overwhelm the Pilot's stabilization thrusters.
+
+    Global Convergence: The fact that your fitness plateaued at 435.00 for over 80 generations suggests this Saboteur has found a "mathematically optimal" way to bully this specific Pilot brain.
+
+4) 
+
+5) budget-conscious saboteur
+This training run represents a major turning point in your project. By increasing the peak force penalty and doubling the generations, you have essentially shifted the Saboteur's evolution from "aggressive bullying" to "budget-conscious sabotage."
+
+Here is the breakdown of what happened and why these results are actually more "intellectual" than your previous runs.
+1. The "Peak Force" Trade-off
+
+By increasing the peak force multiplier to 4.0, you made "Maximum Violence" very expensive for the Genetic Algorithm.
+
+    The Struggle: You can see this in the Efficiency Score (18.43). It is lower than your last run because the fitness function is now actively fighting against the use of strong forces.
+
+    The Result: The Saboteur is now "scared" to use 25N unless it is absolutely certain it will cause a crash. It is searching for the minimal amount of energy needed to tip the Pilot over.
+
+2. Generalist Fatigue (The Volatility)
+
+Look at the jump between Gen 106 (391.12) and Gen 111 (229.25). This is a classic example of Generalist Fatigue.
+
+    Because you are training on 10 random seeds, a Saboteur that is "perfect" for the mountains in Gen 106 might be "useless" for the flat plains in Gen 111.
+
+    The Saboteur is constantly losing its "perfect" patterns and having to re-evolve them to handle new, random environments. This indicates you have successfully removed any "memorization" or "cheating."
+
+3. Analyzing the "Surgical" Attack Profile
+
+Your attack profile shows a very specific, evolved strategy:
+
+    The "Prep" (Segments 0-1): It stays almost quiet (-1N to 2N) while the Pilot builds downward velocity.
+
+    The "First Strike" (Segments 2-3): A massive 24N Right blast. This is designed to force the Pilot to tilt hard to the right to compensate.
+
+    The "Gaps" (Segments 5, 7, 12): Look at the 0.00N and 1.55N segments. The Saboteur has learned to "let go" and watch the Pilot struggle with the momentum it already has. This is the definition of high-efficiency sabotage.
+
+    The "Execution" (Segments 13-16): A sustained 25N Right hammer. Since the mission ended at step 489, this final blow is likely what sent the lander spinning out of control into the ground.
+
+4. Why the Pilot Score is "Better" (-404)
+
+You might notice the Pilot's final score of -404 is higher (less bad) than the previous -665.
+
+    Don't be fooled: This doesn't mean the Saboteur is "weaker." It means it is smarter.
+
+    It is achieving a "Mission Failure" (any negative score is a fail) while strictly adhering to your new, harsher force budget. It is a "budget assassin" rather than a "clumsy giant."
+
+Summary of the "New" Saboteur
+Metric	Previous Run	This Run (200 Gens / 4x Peak Penalty)	Verdict
+Generations	100	200	Much more refined strategy
+Avg Force	13.66N	11.98N	Better (More subtle)
+Pilot Score (Seed 42)	-665	-404	Surgical (Kills with less effort)
+Attack Style	Hammering	Pulsed Whiplash	Higher IQ
