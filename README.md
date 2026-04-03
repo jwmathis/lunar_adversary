@@ -71,7 +71,7 @@ Through the co-evolutionary arms race, the system yielded several profound insig
 **Installation**
 1. Clone the repository:
 ```
-git clone [https://github.com/yourusername/adversarial-neuroevolution.git](https://github.com/yourusername/adversarial-neuroevolution.git)
+git clone [https://github.com/yourusername/adversarial-neuroevolution.git](https://github.com/jwmathis/lunar_adversary.git)
 cd adversarial-neuroevolution
 ```
 2. Install the required dependencies:
