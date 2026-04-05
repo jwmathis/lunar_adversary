@@ -1,19 +1,29 @@
 # Adversarial Neuroevolution: Co-Evolutionary Arms Race in Lunar Lander
 
-## Overview
-This repository contains the source code and research data for Adversarial Neuroevolution, a competitive co-evolutionary framework designed to address the fragility of autonomous control systems. 
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![Gymnasium](https://img.shields.io/badge/Gymnasium-Box2D-orange.svg)
+![NEAT](https://img.shields.io/badge/NEAT-Python-brightgreen.svg)
+![Status](https://img.shields.io/badge/Status-Completed-success.svg)
 
-Standard autonomous agents often "memorize" static training environments, making them incredibly brittle to out-of-distribution real-world noise (e.g., unpredictable wind shear). To solve this, this project implements a **zero-sum minimax game** within the LunarLander-v3 Gymnasium environment.
+## Overview
+This repository contains the source code and research data for **Adversarial Neuroevolution**, a competitive co-evolutionary framework designed to address the fragility of autonomous control systems. 
+
+Standard autonomous agents often "memorize" static training environments, making them incredibly brittle to out-of-distribution real-world noise (e.g., unpredictable wind shear). To solve this, this project implements a **zero-sum minimax game** within the `LunarLander-v3` Gymnasium environment. 
 
 A primary flight controller (the **Pilot**) is evolved using NEAT (NeuroEvolution of Augmenting Topologies), while a secondary Genetic Algorithm (the **Saboteur**) is co-evolved simultaneously to act as an intelligent wind-shear, discovering specific temporal vulnerabilities to crash the Pilot.
 
-## Key Features
-* **Dual-Engine Co-Evolution**: Runs two separate evolutionary algorithms in parallel. The Saboteur evolves to find weaknesses; the Pilot evolves to patch them.
-* **Physics Injection Wrapper**: A custom gymnasium wrapper that directly overrides the Box2D physics engine, injecting the Saboteur's evolved continous-force vectors (```ApplyForceToCenter```) during flight.
-* **Topological Optimization (NEAT)**: The Pilot doesn't just learn weights; it evolves its own neural network structure, starting from zero hidden nodes to prevent "neural bloat."
-* **Automated AI Red-Teaming**: Eliminates the need for human-coded edge cases by automating the discover of system failures.
+## Project Structure
+The codebase is fully modularized into core components and a three-phase training pipeline:
+
+* **`saboteur.py`**: Contains the class definition, mutation, and crossover logic for the adversarial array.
+* **`evaluate.py`**: The testing hub. Handles validation scoring, precision metrics, and video recording.
+* **`visualize.py`**: The graphics hub. Handles Pygame HUDs, real-time neural network drawing, and matplotlib graph generation.
+* **`train_pilot.py`**: Executes **Phase 1** (Baseline static training).
+* **`train_saboteur.py`**: Executes **Phase 2** (Adversary training).
+* **`train_adversarial.py`**: Executes **Phase 3** (The Co-evolutionary Arms Race).
 
 ## System Architecture
+
 ```mermaid
 graph TD
     subgraph Saboteur GA Pipeline
@@ -52,6 +62,50 @@ graph TD
     S_Evol -.->|Next Generation| S_Pop
 ```
 
+
+## Key Features
+* **Dual-Engine Co-Evolution**: Runs two separate evolutionary algorithms in parallel. The Saboteur evolves to find weaknesses; the Pilot evolves to patch them.
+* **Physics Injection Wrapper**: A custom gymnasium wrapper that directly overrides the Box2D physics engine, injecting the Saboteur's evolved continous-force vectors (```ApplyForceToCenter```) during flight.
+* **Topological Optimization (NEAT)**: The Pilot doesn't just learn weights; it evolves its own neural network structure, starting from zero hidden nodes to prevent "neural bloat."
+* **Automated AI Red-Teaming**: Eliminates the need for human-coded edge cases by automating the discover of system failures.
+
+## Execution Pipeline (Usage)
+To replicate the experiment, you must run the training scripts in chronological order. Each script features a command-line interface for training, testing, and plotting.
+
+### Phase 1: Baseline Pilot Training
+Train a standard NEAT controller in a zero-wind environment.
+```
+python train_pilot.py train
+python train_pilot.py test_best
+```
+
+### Phase 2: Saboteur Evolution
+Freeze the Champion Pilot's brain and evolve the Saboteur GA to discover its physical vulnerabilities.
+```
+python train_saboteur.py train
+python train_saboteur.py test
+```
+
+### Phase 3: Adversarial Hardening (Co-Evolution)
+Force the Pilot population to evolve defensive strategies against the Saboteur's attack profile.
+```
+python train_adversarial.py train
+python train_adversarial.py test_best
+```
+
+### Analytics & Validation
+You can generate data plots and vlaidate the success rate of the models at any time by passing different arguments to the training scripts.
+```
+# Generate matplotlib graphs of the evolutionary progress
+python train_adversarial.py plots
+
+# Run 50 headless simulations to get statistical success/crash rates
+python train_adversarial.py validate
+
+# Render a playback of the evolutionary milestones
+python train_adversarial.py playback
+```
+
 ## Results & Findings
 Through the co-evolutionary arms race, the system yielded several profound insights into robust control:
 
@@ -77,20 +131,6 @@ cd lunar_adversary
 2. Install the required dependencies:
 ```
 pip install -r requirements.txt
-```
-
-## Usage
-1. Train the baseline Pilot (clean environment):
-```
-python train_pilot.py
-```
-2. run the Adversarial Co-Evolution loop:
-```
-python train_saboteur.py
-```
-3. Visaualize the Results: To watch the Saboteur actively attack the hardened Pilot in real-time using Pygame:
-```
-python train_saboteur.py --visualize
 ```
 ## Project Origins
 This project was developed by John Wesley Mathis for SSE 674: Introduction to Genetic Algorithms at Mercer University.

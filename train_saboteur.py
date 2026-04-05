@@ -8,6 +8,9 @@ import os
 import sys
 import random
 
+# Import shared visualization tools
+from visualize import draw_hud
+
 # --- CONFIGURATION FOR TRAINING-----
 PILOT_BRAIN_PATH = 'pilot_brain/best_pilot_brain.pkl'
 PILOT_CONFIG_PATH = 'config-feedforward'
@@ -16,13 +19,16 @@ GENERATIONS = 200
 SIM_STEPS = 600  # Max steps per landing
 
 # --- SETTINGS FOR VISUALIZATION -----
-#SABOTEUR_PATH = 'best_saboteur.pkl'
 SABOTEUR_PATH = 'saboteur_brain/phantom_saboteur.pkl'
 SEED = 1010 
 
 # 1. Load the "Champion" Pilot trained by NEAT
-with open(PILOT_BRAIN_PATH, 'rb') as f:
-    pilot_genome = pickle.load(f)
+try:
+    with open(PILOT_BRAIN_PATH, 'rb') as f:
+        pilot_genome = pickle.load(f)
+except FileNotFoundError:
+    print(f"CRITICAL ERROR: Pilot brain not found at {PILOT_BRAIN_PATH}")
+    sys.exit(1)
     
 # Load Pilot configuration
 pilot_config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
@@ -35,7 +41,7 @@ def evaluate_adversarial_generation(population):
     seeds = [42] + [random.randint(0, 100000) for _ in range(9)] 
     
     for saboteur in population:
-        # Test each saboteur over 3 different seeds to ensure it's "Skill" not "Luck"
+        # Test each saboteur over multiple seeds to ensure it's "Skill" not "Luck"
         trial_scores = []
         
         for seed in seeds:
@@ -47,8 +53,7 @@ def evaluate_adversarial_generation(population):
                 output = pilot_net.activate(observation)
                 action = output.index(max(output))
                 
-                # 2. Saboteur applies force (based on 10-segment force list)
-                # Maps 600 steps to 10 force segments (60 steps each)
+                # 2. Saboteur applies force
                 segment_index = min(step // (SIM_STEPS // len(saboteur.forces)), len(saboteur.forces) - 1)
                 wind_force = saboteur.forces[segment_index]
                 
@@ -62,18 +67,15 @@ def evaluate_adversarial_generation(population):
                     break
             trial_scores.append(score)
             
-        # Saboteur's Fitness is how much the Pilot Failed and  if it uses minimal force
+        # Saboteur's Fitness is how much the Pilot Failed and if it uses minimal force
         avg_force_used = np.mean(np.abs(saboteur.forces))
         peak_force_used = np.max(np.abs(saboteur.forces))
-        force_penalty = avg_force_used * 5.0  # Penalize high force to encourage subtlety
         saboteur.fitness = (- np.mean(trial_scores)) - (avg_force_used * 5.0) - (peak_force_used * 4.0)
         
     env.close()
-    
-
 
 def train_saboteur():
-    population = [Saboteur() for _ in range(POP_SIZE)]
+    population = [Saboteur(num_segments=10) for _ in range(POP_SIZE)]
     
     print(f"Training the Saboteur vs the Pilot Brain from '{PILOT_BRAIN_PATH}'")
     print(f"Starting Adversarial Training for {GENERATIONS} Generations...")
@@ -91,7 +93,6 @@ def train_saboteur():
         print(f"Gen {generation+1:03d} | Best Saboteur Fitness (Negative Pilot Score): {best_saboteur.fitness:.2f}")
         
         # 3. Selection and Reprodcution
-        # Top 20% are selected as parents
         elites = population[:int(POP_SIZE * 0.2)]
         next_generation = elites[:] # Elitism keep the best
         
@@ -113,31 +114,17 @@ def train_saboteur():
     print(f"--- Saboteur Efficiency Metrics ---")
     print(f"Average Force Magnitude: {avg_magnitude:.2f}")
     print(f"Peak Force Magnitude: {peak_force:.2f}")
-    print(f"Efficiency Score: {best_saboteur.fitness / avg_magnitude:.2f}")
-    
-    
+    print(f"Efficiency Score: {best_saboteur.fitness / max(1.0, avg_magnitude):.2f}")
 
 def visualize_sabotage():
-    # 1. Load the Pilot (NEAT)
-    if not os.path.exists(PILOT_BRAIN_PATH):
-        print(f"Error: {PILOT_BRAIN_PATH} not found.")
-        return
-        
-    with open(PILOT_BRAIN_PATH, 'rb') as f:
-        pilot_genome = pickle.load(f)
-    
-    pilot_config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
-                               neat.DefaultSpeciesSet, neat.DefaultStagnation,
-                               PILOT_CONFIG_PATH)
-    pilot_net = neat.nn.FeedForwardNetwork.create(pilot_genome, pilot_config)
-    
-    # 2. Load the Best Saboteur (Custom GA profile)
+    # 1. Load the Best Saboteur
     if not os.path.exists(SABOTEUR_PATH):
         print(f"Error: {SABOTEUR_PATH} not found.")
         return
 
     with open(SABOTEUR_PATH, 'rb') as f:
         saboteur = pickle.load(f)
+        
     print("\n--- ATTACK PROFILE ---")
     print(f"{'Segment':<10} | {'Step Range':<15} | {'Force (N)':<10} | {'Description'}")
     print("-" * 60)
@@ -145,7 +132,6 @@ def visualize_sabotage():
         start_step = i * (SIM_STEPS // len(saboteur.forces))
         end_step = (i + 1) * (SIM_STEPS // len(saboteur.forces))
         
-        # Categorize the force for easy reading
         if abs(force) < 2: desc = "Quiet"
         elif abs(force) < 8: desc = "Nudge"
         elif abs(force) < 15: desc = "Strong Wind"
@@ -155,12 +141,12 @@ def visualize_sabotage():
         print(f"{i:<10} | {start_step:>4}-{end_step:<10} | {force:>8.2f}N {direction} | {desc}")
     print("-" * 60 + "\n")
        
-    # 3. Setup Environment
+    # 2. Setup Environment
     env = gym.make('LunarLander-v3', render_mode='human')
     observation, info = env.reset(seed=SEED)
     
     total_reward = 0
-    total_force_spent = 0.0  # Tracks the "energy" the saboteur uses
+    total_force_spent = 0.0 
     steps = 0
     max_steps = SIM_STEPS
     
@@ -168,7 +154,6 @@ def visualize_sabotage():
     
     running = True
     while running:
-        # Handle Pygame events (allows you to close the window)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -178,17 +163,12 @@ def visualize_sabotage():
         action = output.index(max(output))
         
         # --- SABOTEUR DECISION ---
-        # Map current time step to the force segments
         segment_index = min(steps // (max_steps // len(saboteur.forces)), len(saboteur.forces) - 1)
         wind_force = saboteur.forces[segment_index]
         
-        # Accumulate total force spent for the efficiency calculation
         total_force_spent += abs(wind_force)
-        
-        # Apply the wind force directly to the lander's center of mass
         env.unwrapped.lander.ApplyForceToCenter((float(wind_force), 0.0), True)
         
-        # Step physics
         observation, reward, terminated, truncated, info = env.step(action)
         total_reward += reward
         steps += 1
@@ -196,47 +176,32 @@ def visualize_sabotage():
         # --- DRAWING THE METRICS OVERLAY ---
         canvas = pygame.display.get_surface()
         if canvas is not None:
-            # Initialize Font
-            font = pygame.font.SysFont("Arial", 22)
+            # Use shared HUD
+            draw_hud(env, total_reward, observation, steps, 0, wind_force)
             
-            # Calculate live metrics
-            # Efficiency = Damage dealt per unit of force spent
+            font = pygame.font.SysFont("Arial", 22)
             efficiency_ratio = (0 - total_reward) / max(1.0, total_force_spent)
             avg_force = total_force_spent / max(1, steps)
 
-            # Draw text labels
-            score_text = font.render(f"Pilot Score: {int(total_reward)}", True, (255, 255, 255))
-            force_text = font.render(f"Current Force: {wind_force:.2f}N", True, (0, 255, 255))
-            
-            # Efficiency metrics in Gold
             eff_text = font.render(f"Efficiency Ratio: {efficiency_ratio:.2f}", True, (255, 215, 0))
             avg_text = font.render(f"Avg Force Used: {avg_force:.2f}N", True, (255, 215, 0))
             
-            canvas.blit(score_text, (20, 20))
-            canvas.blit(force_text, (20, 50))
-            canvas.blit(eff_text, (20, 80))
-            canvas.blit(avg_text, (20, 110))
+            canvas.blit(eff_text, (20, 220))
+            canvas.blit(avg_text, (20, 250))
             
             # --- DRAW THE FORCE VECTOR (Arrow) ---
-            start_pos = (400, 100) # Top middle of the screen
-            # Scale the force for visual representation
+            start_pos = (400, 100) 
             end_pos = (400 + int(wind_force * 5), 100)
             
-            # Color coding the arrow
-            if abs(wind_force) > 15:
-                color = (255, 50, 50)     # Bright Red: "The Bully"
-            elif abs(wind_force) > 5:
-                color = (200, 0, 255)    # Purple: "The Surgeon"
-            else:
-                color = (200, 200, 200)   # Grey: "The Breeze"
+            if abs(wind_force) > 15: color = (255, 50, 50)     
+            elif abs(wind_force) > 5: color = (200, 0, 255)    
+            else: color = (200, 200, 200)   
                 
             pygame.draw.line(canvas, color, start_pos, end_pos, 5)
-            pygame.draw.circle(canvas, color, end_pos, 7) # Arrow head
-            
+            pygame.draw.circle(canvas, color, end_pos, 7) 
             pygame.display.flip()
             
         if terminated or truncated:
-            # Final terminal summary
             final_eff = (0 - total_reward) / max(1.0, total_force_spent)
             print(f"\n--- MISSION DEBRIEF ---")
             print(f"Final Score: {total_reward:.2f}")
@@ -248,15 +213,12 @@ def visualize_sabotage():
     env.close()
     
 if __name__ == "__main__":
-    local_dir = os.path.dirname(__file__)
-    
     if len(sys.argv) < 2:
         print("Usage: python train_saboteur.py [train/test]")
         sys.exit(1)
-    else: 
-        command = sys.argv[1].lower()
-        if command == "train":
-            train_saboteur()
-        elif command == "test":
-            visualize_sabotage()
-    
+        
+    command = sys.argv[1].lower()
+    if command == "train":
+        train_saboteur()
+    elif command == "test":
+        visualize_sabotage()
