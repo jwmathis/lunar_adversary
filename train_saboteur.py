@@ -19,7 +19,7 @@ GENERATIONS = 200
 SIM_STEPS = 600  # Max steps per landing
 
 # --- SETTINGS FOR VISUALIZATION -----
-SABOTEUR_PATH = 'saboteur_brain/phantom_saboteur.pkl'
+SABOTEUR_PATH = 'best_saboteur.pkl'
 SEED = 1010 
 
 # 1. Load the "Champion" Pilot trained by NEAT
@@ -37,7 +37,7 @@ pilot_config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
 pilot_net = neat.nn.FeedForwardNetwork.create(pilot_genome, pilot_config)
 
 def evaluate_adversarial_generation(population):
-    env = gym.make('LunarLander-v3')
+    env = gym.make('LunarLander-v2')
     seeds = [42] + [random.randint(0, 100000) for _ in range(9)] 
     
     for saboteur in population:
@@ -142,7 +142,7 @@ def visualize_sabotage():
     print("-" * 60 + "\n")
        
     # 2. Setup Environment
-    env = gym.make('LunarLander-v3', render_mode='human')
+    env = gym.make('LunarLander-v2', render_mode='human')
     observation, info = env.reset(seed=SEED)
     
     total_reward = 0

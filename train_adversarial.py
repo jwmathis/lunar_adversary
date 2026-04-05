@@ -21,7 +21,7 @@ current_generation = 0
 
 def eval_genomes(genomes, config):
     global current_generation
-    env = gym.make("LunarLander-v3")
+    env = gym.make("LunarLander-v2")
     try:
         with open(SABOTEUR_PATH, 'rb') as f:
             saboteur_forces = pickle.load(f).forces 

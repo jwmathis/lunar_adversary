@@ -20,7 +20,7 @@ def test_pilot(config_path, genome_path, saboteur_path=None):
         with open(saboteur_path, 'rb') as f:
             saboteur = pickle.load(f)
 
-    env = gym.make("LunarLander-v3", render_mode="human")
+    env = gym.make("LunarLander-v2", render_mode="human")
 
     while True: 
         observation, info = env.reset()
@@ -70,7 +70,7 @@ def test_pilot(config_path, genome_path, saboteur_path=None):
         time.sleep(2)
 
 def playback_evolution(checkpoint_folder, config_path, interval=50):
-    env = gym.make("LunarLander-v3", render_mode="human")
+    env = gym.make("LunarLander-v2", render_mode="human")
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
     
     files = [f for f in os.listdir(checkpoint_folder) if 'checkpoint-' in f]
@@ -121,7 +121,7 @@ def validate_pilot(config_path, genome_path, num_episodes=50):
     with open(genome_path, 'rb') as f:
         winner_genome = pickle.load(f)
     net = neat.nn.FeedForwardNetwork.create(winner_genome, config)
-    env = gym.make("LunarLander-v3") 
+    env = gym.make("LunarLander-v2") 
 
     successes = crashes = total_reward = 0
 
@@ -153,7 +153,7 @@ def validate_pilot_precision(config_path, genome_path, num_trials=50):
     with open(genome_path, "rb") as f:
         genome = pickle.load(f)
     net = neat.nn.FeedForwardNetwork.create(genome, config)
-    env = gym.make("LunarLander-v3")
+    env = gym.make("LunarLander-v2")
     
     rewards, displacements = [], []
     success_count = 0
@@ -201,7 +201,7 @@ def record_pilot(config_path, genome_path, seed=500):
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
     net = neat.nn.FeedForwardNetwork.create(genome, config)
 
-    env = gym.make("LunarLander-v3", render_mode="rgb_array")
+    env = gym.make("LunarLander-v2", render_mode="rgb_array")
     env = gym.wrappers.RecordVideo(env, video_folder="victory_lap", name_prefix=f"elite_pilot_seed_{seed}")
 
     observation, info = env.reset(seed=seed)

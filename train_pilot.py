@@ -13,7 +13,7 @@ for folder in ['checkpoints', 'evolution_snapshots', 'evolution_plots']:
     os.makedirs(folder, exist_ok=True)
         
 def eval_genomes(genomes, config):
-    env = gym.make("LunarLander-v3")
+    env = gym.make("LunarLander-v2")
     
     for genome_id, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)

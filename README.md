@@ -8,7 +8,7 @@
 ## Overview
 This repository contains the source code and research data for **Adversarial Neuroevolution**, a competitive co-evolutionary framework designed to address the fragility of autonomous control systems. 
 
-Standard autonomous agents often "memorize" static training environments, making them incredibly brittle to out-of-distribution real-world noise (e.g., unpredictable wind shear). To solve this, this project implements a **zero-sum minimax game** within the `LunarLander-v3` Gymnasium environment. 
+Standard autonomous agents often "memorize" static training environments, making them incredibly brittle to out-of-distribution real-world noise (e.g., unpredictable wind shear). To solve this, this project implements a **zero-sum minimax game** within the `LunarLander-v2` Gymnasium environment. 
 
 A primary flight controller (the **Pilot**) is evolved using NEAT (NeuroEvolution of Augmenting Topologies), while a secondary Genetic Algorithm (the **Saboteur**) is co-evolved simultaneously to act as an intelligent wind-shear, discovering specific temporal vulnerabilities to crash the Pilot.
 
@@ -39,7 +39,7 @@ graph TD
     end
 
     subgraph Simulation Environment
-        Env((Gymnasium LunarLander-v3<br/>Box2D Physics Engine))
+        Env((Gymnasium LunarLander-v2<br/>Box2D Physics Engine))
         Hook[Adversarial Wrapper<br/>ApplyForceToCenter]
     end
 
@@ -122,6 +122,18 @@ Through the co-evolutionary arms race, the system yielded several profound insig
 * NEAT-Python
 * Pygame (for visualization)
 
+> [!IMPORTANT]
+>
+> **macOS / Apple Silicon Requirements**
+>
+> If you are on a Mac, the `box2d-py` physics engine will likely fail to install via pip because it requires a system-level C++ compiler to build the environment. You will also need `graphviz` installed at the system level to render the neural network topology diagrams.
+
+Before running the `pip install` command, install these dependencies using [Homebrew](https://brew.sh/):
+```bash
+brew install swig
+brew install graphviz
+```
+
 **Installation**
 1. Clone the repository:
 ```
@@ -132,5 +144,6 @@ cd lunar_adversary
 ```
 pip install -r requirements.txt
 ```
+
 ## Project Origins
 This project was developed by John Wesley Mathis for SSE 674: Introduction to Genetic Algorithms at Mercer University.
