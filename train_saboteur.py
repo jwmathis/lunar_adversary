@@ -17,7 +17,7 @@ SIM_STEPS = 600  # Max steps per landing
 
 # --- SETTINGS FOR VISUALIZATION -----
 #SABOTEUR_PATH = 'best_saboteur.pkl'
-SABOTEUR_PATH = 'saboteur_brain/budget_consc_saboteur.pkl'
+SABOTEUR_PATH = 'saboteur_brain/phantom_saboteur.pkl'
 SEED = 1010 
 
 # 1. Load the "Champion" Pilot trained by NEAT
