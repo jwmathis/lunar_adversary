@@ -7,37 +7,23 @@ import pygame
 import os
 import sys
 import random
+import argparse
 
 # Import shared visualization tools
 from visualize import draw_hud
 
 # --- CONFIGURATION FOR TRAINING-----
-PILOT_BRAIN_PATH = 'pilot_brain/best_pilot_brain.pkl'
 PILOT_CONFIG_PATH = 'config-feedforward'
 POP_SIZE = 50
 GENERATIONS = 200
 SIM_STEPS = 600  # Max steps per landing
-
-# --- SETTINGS FOR VISUALIZATION -----
-SABOTEUR_PATH = 'best_saboteur.pkl'
 SEED = 1010 
 
-# 1. Load the "Champion" Pilot trained by NEAT
-try:
-    with open(PILOT_BRAIN_PATH, 'rb') as f:
-        pilot_genome = pickle.load(f)
-except FileNotFoundError:
-    print(f"CRITICAL ERROR: Pilot brain not found at {PILOT_BRAIN_PATH}")
-    sys.exit(1)
-    
-# Load Pilot configuration
-pilot_config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
-                           neat.DefaultSpeciesSet, neat.DefaultStagnation,
-                           PILOT_CONFIG_PATH)
-pilot_net = neat.nn.FeedForwardNetwork.create(pilot_genome, pilot_config)
+# Globals to hold dynamic networks
+pilot_net = None
 
 def evaluate_adversarial_generation(population):
-    env = gym.make('LunarLander-v2')
+    env = gym.make('LunarLander-v3')
     seeds = [42] + [random.randint(0, 100000) for _ in range(9)] 
     
     for saboteur in population:
@@ -74,10 +60,20 @@ def evaluate_adversarial_generation(population):
         
     env.close()
 
-def train_saboteur():
+def train_saboteur(pilot_path):
+    global pilot_net
+    try:
+        with open(pilot_path, 'rb') as f:
+            pilot_genome = pickle.load(f)
+    except FileNotFoundError:
+        sys.exit(f"CRITICAL ERROR: Pilot brain not found at {pilot_path}")
+        
+    pilot_config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, PILOT_CONFIG_PATH)
+    pilot_net = neat.nn.FeedForwardNetwork.create(pilot_genome, pilot_config)
+    
     population = [Saboteur(num_segments=10) for _ in range(POP_SIZE)]
     
-    print(f"Training the Saboteur vs the Pilot Brain from '{PILOT_BRAIN_PATH}'")
+    print(f"Training the Saboteur vs the Pilot Brain from '{pilot_path}'")
     print(f"Starting Adversarial Training for {GENERATIONS} Generations...")
     print(f"Population Size: {POP_SIZE}, Simulation Steps per Trial: {SIM_STEPS}")
     print("-----------------------------------------------------")
@@ -116,13 +112,22 @@ def train_saboteur():
     print(f"Peak Force Magnitude: {peak_force:.2f}")
     print(f"Efficiency Score: {best_saboteur.fitness / max(1.0, avg_magnitude):.2f}")
 
-def visualize_sabotage():
-    # 1. Load the Best Saboteur
-    if not os.path.exists(SABOTEUR_PATH):
-        print(f"Error: {SABOTEUR_PATH} not found.")
-        return
+def visualize_sabotage(pilot_path, saboteur_path):
+    global pilot_net
+    # 1. Load the Pilot and Saboteur
+    try:
+        with open(pilot_path, 'rb') as f:
+            pilot_genome = pickle.load(f)
+    except FileNotFoundError:
+        sys.exit(f"CRITICAL ERROR: Pilot brain not found at {pilot_path}")
+        
+    pilot_config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, PILOT_CONFIG_PATH)
+    pilot_net = neat.nn.FeedForwardNetwork.create(pilot_genome, pilot_config)
+    
+    if not os.path.exists(saboteur_path):
+        sys.exit(f"Error: {saboteur_path} not found.")
 
-    with open(SABOTEUR_PATH, 'rb') as f:
+    with open(saboteur_path, 'rb') as f:
         saboteur = pickle.load(f)
         
     print("\n--- ATTACK PROFILE ---")
@@ -142,7 +147,7 @@ def visualize_sabotage():
     print("-" * 60 + "\n")
        
     # 2. Setup Environment
-    env = gym.make('LunarLander-v2', render_mode='human')
+    env = gym.make('LunarLander-v3', render_mode='human')
     observation, info = env.reset(seed=SEED)
     
     total_reward = 0
@@ -213,12 +218,21 @@ def visualize_sabotage():
     env.close()
     
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python train_saboteur.py [train/test]")
-        sys.exit(1)
-        
-    command = sys.argv[1].lower()
-    if command == "train":
-        train_saboteur()
-    elif command == "test":
-        visualize_sabotage()
+    parser = argparse.ArgumentParser(description="Phase 2: Saboteur Co-Evolution")
+    subparsers = parser.add_subparsers(dest="command", required=True, help="Available commands")
+    
+    # 1. TRAIN
+    train_parser = subparsers.add_parser("train", help="Evolve the Saboteur against a pilot")
+    train_parser.add_argument("pilot_path", type=str, help="Path to the victim pilot .pkl brain")
+    
+    # 2. TEST
+    test_parser = subparsers.add_parser("test", help="Watch the Saboteur attack a pilot")
+    test_parser.add_argument("pilot_path", type=str, help="Path to the victim pilot .pkl brain")
+    test_parser.add_argument("saboteur_path", type=str, help="Path to the saboteur .pkl file")
+
+    args = parser.parse_args()
+    
+    if args.command == "train":
+        train_saboteur(args.pilot_path)
+    elif args.command == "test":
+        visualize_sabotage(args.pilot_path, args.saboteur_path)

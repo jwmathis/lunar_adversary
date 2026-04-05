@@ -2,31 +2,34 @@ import gymnasium as gym
 import neat
 import os
 import pickle
-import sys
 import random
 import copy
 import itertools
+import sys
+import argparse
 
 # Import modularized tools
-from evaluate import test_pilot, playback_evolution, validate_pilot, validate_pilot_precision
-from visualize import visualize_all_checkpoints, plot_fitness_from_checkpoints, plot_smoothed_fitness
+from evaluate import test_pilot, playback_evolution, validate_pilot, validate_pilot_precision, record_pilot
+from visualize import visualize_all_checkpoints, plot_fitness_from_checkpoints, plot_smoothed_fitness, visualize_checkpoint_brain
 
 for folder in ['checkpoints_adversarial', 'adversarial_evolution_snapshots', 'adversarial_evolution_plots']:
     os.makedirs(folder, exist_ok=True)
 
-SABOTEUR_PATH = 'saboteur_brain/budget_consc_saboteur.pkl'
-PILOT_PATH = 'pilot_brain/best_pilot_brain.pkl'
 CONFIG_PATH = 'config-feedforward'
+
+# Globals modified dynamically by the CLI
+SABOTEUR_PATH = None
+PILOT_PATH = None
 current_generation = 0
 
 def eval_genomes(genomes, config):
     global current_generation
-    env = gym.make("LunarLander-v2")
+    env = gym.make("LunarLander-v3")
     try:
         with open(SABOTEUR_PATH, 'rb') as f:
             saboteur_forces = pickle.load(f).forces 
-    except FileNotFoundError:
-        sys.exit("CRITICAL ERROR: Saboteur.pkl not found. Run Phase 2 first!")
+    except Exception as e:
+        sys.exit(f"CRITICAL ERROR: Saboteur could not be loaded from {SABOTEUR_PATH}. {e}")
         
     scaling_factor = min(1.0, 0.2 + (current_generation / 200.0))
     
@@ -95,7 +98,7 @@ def run_neat(config_file):
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_file)
     population = neat.Population(config)
     
-    if os.path.exists(PILOT_PATH):
+    if PILOT_PATH and os.path.exists(PILOT_PATH):
         print("\n--- PHASE 3: Hardening the Veteran Pilot ---")
         with open(PILOT_PATH, 'rb') as f: veteran_genome = pickle.load(f)
         
@@ -131,15 +134,34 @@ def run_neat(config_file):
     with open('robust_pilot_brain.pkl', 'wb') as f: pickle.dump(best_ever, f)
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.exit("Usage: python train_adversarial.py [train/test_best/validate/validate_precision/plots/playback]")
-        
-    command = sys.argv[1].lower()
+    parser = argparse.ArgumentParser(description="Phase 3: Adversarial Co-Evolution Pipeline")
+    subparsers = parser.add_subparsers(dest="command", required=True, help="Available commands")
     
-    if command == "train":
-        if len(sys.argv) > 2:
-            checkpoint_file = sys.argv[2]
-            p = neat.Checkpointer.restore_checkpoint(checkpoint_file)
+    # 1. TRAIN Command
+    train_parser = subparsers.add_parser("train", help="Hardens a pilot against the saboteur")
+    train_parser.add_argument("pilot_path", type=str, help="Path to the initial pilot .pkl")
+    train_parser.add_argument("saboteur_path", type=str, help="Path to the saboteur .pkl to train against")
+    train_parser.add_argument("--resume", type=str, help="Path to a checkpoint file to resume from")
+    
+    # 2. EVALUATE Command
+    eval_parser = subparsers.add_parser("evaluate", help="Test, validate, or record a pilot")
+    eval_parser.add_argument("mode", choices=["test_best", "validate", "validate_precision", "record"], help="How to evaluate the pilot")
+    eval_parser.add_argument("pilot_path", type=str, help="Path to the pilot .pkl brain")
+    eval_parser.add_argument("--saboteur", type=str, default=None, help="Path to saboteur .pkl (applies wind if provided)")
+    
+    # 3. VISUALIZE Command
+    viz_parser = subparsers.add_parser("visualize", help="Generate plots, playback, and brain diagrams")
+    viz_parser.add_argument("mode", choices=["plots", "playback", "draw_brain"], help="What to visualize")
+    viz_parser.add_argument("--checkpoint", type=str, help="Specific checkpoint file (required for draw_brain)")
+
+    args = parser.parse_args()
+
+    if args.command == "train":
+        SABOTEUR_PATH = args.saboteur_path
+        PILOT_PATH = args.pilot_path
+        if args.resume:
+            print(f"Resuming from checkpoint: {args.resume}")
+            p = neat.Checkpointer.restore_checkpoint(args.resume)
             p.config.fitness_threshold = 12000
             p.config.conn_add_prob = 0.1
             p.config.node_add_prob = 0.05
@@ -156,28 +178,26 @@ if __name__ == "__main__":
             with open('robust_pilot_brain.pkl', 'wb') as f: pickle.dump(best_ever, f)
         else:
             run_neat(CONFIG_PATH)
-
-    elif command == "test_best":
-        if len(sys.argv) < 3: sys.exit("Please provide the genome file to test.")
-        # We pass SABOTEUR_PATH here so the evaluation loop applies the wind
-        test_pilot(CONFIG_PATH, sys.argv[2], saboteur_path=SABOTEUR_PATH)
-        
-    elif command == "validate":
-        if len(sys.argv) < 3: sys.exit("Usage: python train_adversarial.py validate [genome_file]")
-        validate_pilot(CONFIG_PATH, sys.argv[2])
-        
-    elif command == "validate_precision":
-        if len(sys.argv) < 3: sys.exit("Usage: python train_adversarial.py validate_precision [genome_file]")
-        validate_pilot_precision(CONFIG_PATH, sys.argv[2])
-        
-    elif command == "plots":
-        os.makedirs("adversarial_evolution_plots", exist_ok=True)
-        visualize_all_checkpoints("checkpoints_adversarial", CONFIG_PATH)
-        plot_fitness_from_checkpoints('checkpoints_adversarial', filename='adversarial_evolution_graph.png')
-        plot_smoothed_fitness('checkpoints_adversarial', window_size=5, filename='adversarial_smoothed_evolution.png')
-        
-    elif command == "playback":
-        playback_evolution('checkpoints_adversarial', CONFIG_PATH, interval=10)
-        
-    else:
-        print("Unknown command.")
+            
+    elif args.command == "evaluate":
+        if args.mode == "test_best":
+            test_pilot(CONFIG_PATH, args.pilot_path, saboteur_path=args.saboteur)
+        elif args.mode == "validate":
+            validate_pilot(CONFIG_PATH, args.pilot_path, saboteur_path=args.saboteur)
+        elif args.mode == "validate_precision":
+            validate_pilot_precision(CONFIG_PATH, args.pilot_path)
+        elif args.mode == "record":
+            record_pilot(CONFIG_PATH, args.pilot_path)
+            
+    elif args.command == "visualize":
+        if args.mode == "plots":
+            os.makedirs("adversarial_evolution_plots", exist_ok=True)
+            visualize_all_checkpoints("checkpoints_adversarial", CONFIG_PATH)
+            plot_fitness_from_checkpoints('checkpoints_adversarial', filename='adversarial_evolution_graph.png')
+            plot_smoothed_fitness('checkpoints_adversarial', window_size=5, filename='adversarial_smoothed_evolution.png')
+        elif args.mode == "playback":
+            playback_evolution('checkpoints_adversarial', CONFIG_PATH, interval=10)
+        elif args.mode == "draw_brain":
+            if not args.checkpoint:
+                parser.error("draw_brain requires the --checkpoint argument")
+            visualize_checkpoint_brain(args.checkpoint, CONFIG_PATH)

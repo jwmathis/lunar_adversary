@@ -2,18 +2,18 @@ import gymnasium as gym
 import neat
 import os
 import pickle
-import sys
 import random
+import argparse
 
 # Import modularized tools
 from evaluate import test_pilot, playback_evolution, validate_pilot, validate_pilot_precision, record_pilot
-from visualize import visualize_all_checkpoints, plot_fitness_from_checkpoints, plot_smoothed_fitness
+from visualize import visualize_all_checkpoints, plot_fitness_from_checkpoints, plot_smoothed_fitness, visualize_checkpoint_brain
 
 for folder in ['checkpoints', 'evolution_snapshots', 'evolution_plots']:
     os.makedirs(folder, exist_ok=True)
         
 def eval_genomes(genomes, config):
-    env = gym.make("LunarLander-v2")
+    env = gym.make("LunarLander-v3")
     
     for genome_id, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
@@ -93,19 +93,31 @@ def run_neat(config_file):
 
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, "config-feedforward")
+    CONFIG_PATH = os.path.join(local_dir, "config-feedforward")
     
-    if len(sys.argv) < 2:
-        print("Usage: python train_pilot.py [train/test_best/validate/validate_precision/plots/playback]")
-        sys.exit(1)
-        
-    command = sys.argv[1].lower()
+    parser = argparse.ArgumentParser(description="Phase 1: Baseline NEAT Pilot Training")
+    subparsers = parser.add_subparsers(dest="command", required=True, help="Available commands")
     
-    if command == "train":
-        if len(sys.argv) > 2:
-            checkpoint_file = sys.argv[2]
-            print(f"Resuming from checkpoint: {checkpoint_file}")
-            p = neat.Checkpointer.restore_checkpoint(checkpoint_file)
+    # 1. TRAIN
+    train_parser = subparsers.add_parser("train", help="Train a pilot from scratch")
+    train_parser.add_argument("--resume", type=str, help="Path to checkpoint file to resume from")
+    
+    # 2. EVALUATE
+    eval_parser = subparsers.add_parser("evaluate", help="Test, validate, or record a pilot")
+    eval_parser.add_argument("mode", choices=["test_best", "validate", "validate_precision", "record"], help="Evaluation mode")
+    eval_parser.add_argument("pilot_path", type=str, help="Path to the pilot .pkl brain")
+    
+    # 3. VISUALIZE
+    viz_parser = subparsers.add_parser("visualize", help="Generate plots, playback, or brain diagrams")
+    viz_parser.add_argument("mode", choices=["plots", "playback", "draw_brain"], help="Visualization mode")
+    viz_parser.add_argument("--checkpoint", type=str, help="Path to checkpoint (required for draw_brain)")
+
+    args = parser.parse_args()
+    
+    if args.command == "train":
+        if args.resume:
+            print(f"Resuming from checkpoint: {args.resume}")
+            p = neat.Checkpointer.restore_checkpoint(args.resume)
             p.config.fitness_threshold = 12000
             p.config.conn_add_prob = 0.1
             p.config.node_add_prob = 0.05
@@ -122,28 +134,27 @@ if __name__ == "__main__":
             best_ever = stats.best_genome() 
             with open('best_pilot_brain.pkl', 'wb') as f: pickle.dump(best_ever, f)
         else:
-            run_neat(config_path)
+            run_neat(CONFIG_PATH)
 
-    elif command == "test_best":
-        if len(sys.argv) < 3: sys.exit("Please provide the genome file to test.")
-        test_pilot(config_path, sys.argv[2])
-        
-    elif command == "validate":
-        if len(sys.argv) < 3: sys.exit("Usage: python train_pilot.py validate [genome_file]")
-        validate_pilot(config_path, sys.argv[2])
-        
-    elif command == "validate_precision":
-        if len(sys.argv) < 3: sys.exit("Usage: python train_pilot.py validate_precision [genome_file]")
-        validate_pilot_precision(config_path, sys.argv[2])
-        
-    elif command == "plots":
-        os.makedirs("evolution_plots", exist_ok=True)
-        visualize_all_checkpoints("checkpoints", config_path)
-        plot_fitness_from_checkpoints('checkpoints')
-        plot_smoothed_fitness('checkpoints', window_size=5)
-        
-    elif command == "playback":
-        playback_evolution('checkpoints', config_path, interval=10)
-        
-    else:
-        print("Unknown command. Use 'train', 'test_best', 'validate', 'plots', or 'playback'.")
+    elif args.command == "evaluate":
+        if args.mode == "test_best":
+            test_pilot(CONFIG_PATH, args.pilot_path)
+        elif args.mode == "validate":
+            validate_pilot(CONFIG_PATH, args.pilot_path)
+        elif args.mode == "validate_precision":
+            validate_pilot_precision(CONFIG_PATH, args.pilot_path)
+        elif args.mode == "record":
+            record_pilot(CONFIG_PATH, args.pilot_path)
+            
+    elif args.command == "visualize":
+        if args.mode == "plots":
+            os.makedirs("evolution_plots", exist_ok=True)
+            visualize_all_checkpoints("checkpoints", CONFIG_PATH)
+            plot_fitness_from_checkpoints('checkpoints')
+            plot_smoothed_fitness('checkpoints', window_size=5)
+        elif args.mode == "playback":
+            playback_evolution('checkpoints', CONFIG_PATH, interval=10)
+        elif args.mode == "draw_brain":
+            if not args.checkpoint:
+                parser.error("draw_brain requires the --checkpoint argument")
+            visualize_checkpoint_brain(args.checkpoint, CONFIG_PATH)

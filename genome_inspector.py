@@ -1,7 +1,7 @@
 import pickle
 import neat
 import os
-import sys
+import argparse
 
 # Since Saboteur is a custom class, we define a dummy version 
 # to allow pickle to load the data if the original script isn't present.
@@ -76,13 +76,17 @@ def inspect_checkpoint(checkpoint_file):
         print(f"Could not parse Checkpoint: {e}")
 
 if __name__ == "__main__":
-    # Update these paths to match your local files
-    PILOT_FILE = 'robust_pilot_brain.pkl'
-    SAB_FILE = 'saboteur_brain/budget_consc_saboteur.pkl'
-    CHECKPOINT = 'checkpoints_adversarial/adversarial-neat-checkpoint-500'
+    parser = argparse.ArgumentParser(description="Extract Metrics from Checkpoints and Brains")
+    parser.add_argument("--pilot", type=str, help="Path to pilot .pkl")
+    parser.add_argument("--saboteur", type=str, help="Path to saboteur .pkl")
+    parser.add_argument("--checkpoint", type=str, help="Path to NEAT checkpoint")
+    
+    args = parser.parse_args()
     
     print("GA MISSION DATA EXTRACTION\n")
+    if args.pilot: inspect_pilot(args.pilot)
+    if args.saboteur: inspect_saboteur(args.saboteur)
+    if args.checkpoint: inspect_checkpoint(args.checkpoint)
     
-    if os.path.exists(PILOT_FILE): inspect_pilot(PILOT_FILE)
-    if os.path.exists(SAB_FILE): inspect_saboteur(SAB_FILE)
-    if os.path.exists(CHECKPOINT): inspect_checkpoint(CHECKPOINT)
+    if not (args.pilot or args.saboteur or args.checkpoint):
+        parser.print_help()
