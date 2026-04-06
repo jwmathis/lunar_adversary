@@ -3,7 +3,6 @@
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![Gymnasium](https://img.shields.io/badge/Gymnasium-Box2D-orange.svg)
 ![NEAT](https://img.shields.io/badge/NEAT-Python-brightgreen.svg)
-![Status](https://img.shields.io/badge/Status-Completed-success.svg)
 
 ## Overview
 This repository contains the source code and research data for **Adversarial Neuroevolution**, a competitive co-evolutionary framework designed to address the fragility of autonomous control systems. 
