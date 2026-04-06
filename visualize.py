@@ -102,8 +102,21 @@ def draw_hud(env, total_reward, observation, step, fuel_spent, wind_force=0.0, g
 def visualize_checkpoint_brain(checkpoint_path, config_path):
     p = neat.Checkpointer.restore_checkpoint(checkpoint_path)
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
-    draw_net(config, p.best_genome, False, filename=f"brain_from_{checkpoint_path}")
-    print(f"Brain diagram saved for {checkpoint_path}")
+    
+    # 1. Manually search the population for the genome with the highest fitness
+    best_genome = max((g for g in p.population.values() if g.fitness is not None), key=lambda g: g.fitness, default=None)
+    
+    # 2. Fallback: Checkpoints sometimes save before fitness is evaluated. 
+    # If all fitnesses are None, grab the first genome just to show the topology.
+    if best_genome is None:
+        print("WARNING: No fitness scores found in this checkpoint. Drawing an arbitrary genome.")
+        best_genome = list(p.population.values())[0]
+        
+    # 3. Cross-platform safe filename extraction (Fixes Windows "\" pathing)
+    safe_filename = os.path.basename(checkpoint_path)
+    
+    draw_net(config, best_genome, False, filename=f"brain_from_{safe_filename}")
+    print(f"Brain diagram saved for {safe_filename}")
     
 def visualize_all_checkpoints(folder_path, config_path):
     files = [f for f in os.listdir(folder_path) if f.startswith('neat-checkpoint-') or f.startswith('adversarial-neat-checkpoint-')]
@@ -147,7 +160,7 @@ def plot_fitness_from_checkpoints(checkpoint_folder, filename="evolution_graph.p
     plt.savefig(filename)
     print(f"Graph saved as {filename}")
  
-def plot_smoothed_fitness(checkpoint_folder, window_size=5, filename="smoothed_evolution.png"):
+def plot_smoothed_fitness(checkpoint_folder, window_size=5, filename="smoothed_evolution_light.png"):
     files = [f for f in os.listdir(checkpoint_folder) if 'checkpoint-' in f]
     files.sort(key=lambda x: int(x.split('-')[-1]))
 
@@ -164,20 +177,28 @@ def plot_smoothed_fitness(checkpoint_folder, window_size=5, filename="smoothed_e
     smoothed_best = pd.Series(best_fitness).rolling(window=window_size, min_periods=1).mean()
     smoothed_avg = pd.Series(avg_fitness).rolling(window=window_size, min_periods=1).mean()
 
-    plt.style.use('dark_background') 
-    plt.figure(figsize=(12, 6))
-    plt.plot(generations, best_fitness, color='#50E3C2', alpha=0.2, label='_nolegend_')
-    plt.plot(generations, avg_fitness, color='#4A90E2', alpha=0.1, label='_nolegend_')
-    plt.plot(generations, smoothed_best, label=f'Best ({window_size}-Gen Avg)', color='#50E3C2', linewidth=3)
-    plt.plot(generations, smoothed_avg, label=f'Pop. Mean ({window_size}-Gen Avg)', color='#4A90E2', linewidth=2, linestyle='--')
+    # Academic Style Configuration
+    plt.style.use('default') 
+    plt.figure(figsize=(10, 5), facecolor='white')
     
-    plt.title('Smoothed Pilot Intelligence Evolution')
-    plt.xlabel('Generation')
-    plt.ylabel('Fitness Score')
-    plt.legend()
-    plt.grid(color='gray', linestyle=':', alpha=0.3)
+    # Faded raw lines
+    plt.plot(generations, best_fitness, color='#2c3e50', alpha=0.15, label='_nolegend_')
+    plt.plot(generations, avg_fitness, color='#e74c3c', alpha=0.15, label='_nolegend_')
+    
+    # Bold smoothed lines with distinct line styles for grayscale printing
+    plt.plot(generations, smoothed_best, label=f'Best ({window_size}-Gen Avg)', color='#2c3e50', linewidth=2.5, linestyle='-')
+    plt.plot(generations, smoothed_avg, label=f'Pop. Mean ({window_size}-Gen Avg)', color='#e74c3c', linewidth=2.5, linestyle='--')
+    
+    plt.title('Smoothed Pilot Intelligence Evolution', fontsize=14, fontweight='bold')
+    plt.xlabel('Generation', fontsize=12)
+    plt.ylabel('Fitness Score', fontsize=12)
+    plt.legend(loc='best', frameon=True, edgecolor='black')
+    plt.grid(color='gray', linestyle=':', alpha=0.5)
     plt.tight_layout()
-    plt.savefig(filename)
+    
+    # High DPI for clear academic printing
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    print(f"Academic graph saved as {filename}")
 
 def plot_precision_histogram(displacements, filename="landing_precision.png"):
     plt.style.use('dark_background')
